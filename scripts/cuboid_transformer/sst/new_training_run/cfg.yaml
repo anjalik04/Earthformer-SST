@@ -1,0 +1,76 @@
+# @package _global_
+
+# --- Dataset Configuration ---
+dataset:
+  _target_: src.earthformer.datasets.sst.sst_datamodule.SSTDataModule
+  data_root: "/content/data"
+  in_len: 52
+  out_len: 52
+  batch_size: 2
+  num_workers: 2
+  train_end_year: 2015
+  val_end_year: 2020
+
+# --- Model Configuration ---
+model:
+  _target_: src.earthformer.cuboid_transformer.CuboidTransformerModel
+  in_len: ${dataset.in_len}
+  out_len: ${dataset.out_len}
+  in_channels: 1
+  out_channels: 1
+  # spatial dimensions can be inferred or set explicitly
+  input_shape: [52, 720, 1440, 1]
+  target_shape: [52, 720, 1440, 1]
+
+  num_blocks: 1
+  num_layers: 6
+  num_global_vectors: 8
+  dim: 512
+  hidden_dim: 2048
+  num_heads: 8
+  encoder_depth: 3
+  decoder_depth: 3
+  downsample: 2
+  use_global_vector: True
+  use_autoregression: False
+
+  loss: "mae"
+  metrics: ["mse", "mae", "rmse"]
+
+# --- Optimizer and Scheduler Configuration ---
+optim:
+  total_batch_size: 32      # Added to match code expectations
+  micro_batch_size: 2       # Added to match code expectations
+  seed: 2022
+  method: "adamw"
+  lr: 1.0e-4
+  wd: 0.05
+  gradient_clip_val: 1.0
+  max_epochs: 100           # <-- CHANGE THIS (from 50 to 100)
+  lr_scheduler_mode: "cosine"
+  min_lr_ratio: 1.0e-3
+  warmup_min_lr_ratio: 0.0
+  warmup_percentage: 0.2
+  early_stop: true
+  early_stop_mode: "min"
+  early_stop_patience: 5
+  save_top_k: 1
+
+# --- Logging Configuration ---
+logging:
+  save_dir: "lightning_logs/sst"
+  project: "earthformer"
+  name: "cuboid_transformer_sst_singlefile"
+  monitor_lr: true
+  monitor_device: false
+
+# --- Trainer Configuration ---
+trainer:
+  gpus: 1
+  strategy: "ddp"
+  max_epochs: 50           # <-- CHANGE THIS (from 50 to 100)
+  precision: 16
+  check_val_every_n_epoch: 1
+  log_step_ratio: 0.01
+
+seed: 2022
