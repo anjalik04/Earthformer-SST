@@ -319,6 +319,7 @@ class CuboidSSTPLModule(pl.LightningModule):
     def on_validation_epoch_end(self):
         valid_mse = self.valid_mse.compute()
         valid_mae = self.valid_mae.compute()
+        print(f"\nEPOCH {self.current_epoch} VALIDATION: MSE: {valid_mse:.4f}, MAE: {valid_mae:.4f}")
         self.log('valid_mse_epoch', valid_mse, prog_bar=True, on_step=False, on_epoch=True)
         self.log('valid_mae_epoch', valid_mae, prog_bar=True, on_step=False, on_epoch=True)
         self.valid_mse.reset()
