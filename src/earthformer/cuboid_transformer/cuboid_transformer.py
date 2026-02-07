@@ -3196,3 +3196,66 @@ class CuboidTransformerModel(nn.Module):
         dec_out = self.final_decoder(dec_out)
         out = self.dec_final_proj(dec_out)
         return out
+
+    def forward_with_features(
+        self,
+        x,
+        verbose=False,
+        enc_block_indices=None,
+        return_dec_pre_proj=True,
+    ):
+        """
+        Forward pass that also returns intermediate features for distillation.
+
+        Parameters
+        ----------
+        x
+            Shape (B, T, H, W, C)
+        verbose
+            If True, print intermediate shapes.
+        enc_block_indices
+            List of encoder memory indices to return (default: last two, i.e. [-2, -1]).
+        return_dec_pre_proj
+            If True, include decoder output before the final projection.
+
+        Returns
+        -------
+        out
+            Model output, shape (B, T_out, H, W, C_out).
+        features
+            Dict with keys:
+            - "enc_mem_l": list of tensors, selected encoder block outputs.
+            - "dec_pre_proj": decoder output before dec_final_proj, or None.
+            - "mem_l": full list of encoder memories (for custom indexing).
+        """
+        if enc_block_indices is None:
+            enc_block_indices = [-2, -1]
+        B, _, _, _, _ = x.shape
+        T_out = self.target_shape[0]
+        x = self.initial_encoder(x)
+        x = self.enc_pos_embed(x)
+        if self.num_global_vectors > 0:
+            init_global_vectors = self.init_global_vectors\
+                .expand(B, self.num_global_vectors, self.global_dim_ratio*self.base_units)
+            mem_l, mem_global_vector_l = self.encoder(x, init_global_vectors)
+        else:
+            mem_l = self.encoder(x)
+        if verbose:
+            for i, mem in enumerate(mem_l):
+                print(f"mem[{i}].shape = {mem.shape}")
+        initial_z = self.get_initial_z(final_mem=mem_l[-1],
+                                       T_out=T_out)
+        if self.num_global_vectors > 0:
+            dec_out = self.decoder(initial_z, mem_l, mem_global_vector_l)
+        else:
+            dec_out = self.decoder(initial_z, mem_l)
+        dec_pre_proj = dec_out
+        dec_out = self.final_decoder(dec_out)
+        out = self.dec_final_proj(dec_out)
+        enc_selected = [mem_l[i] for i in enc_block_indices]
+        features = {
+            "enc_mem_l": enc_selected,
+            "dec_pre_proj": dec_pre_proj if return_dec_pre_proj else None,
+            "mem_l": mem_l,
+        }
+        return out, features
