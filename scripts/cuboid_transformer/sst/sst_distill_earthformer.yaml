@@ -1,0 +1,57 @@
+# Earthformer-to-Earthformer SST distillation
+# Teacher: fixed patch; Student: same architecture, striding patches; offline training.
+
+# Teacher (pre-trained) paths
+teacher_ckpt_path: "sst_colab_run_1/checkpoints/last.ckpt"
+teacher_cfg_path: "sst.yaml"
+
+# Patch dataset for paired teacher/student
+dataset:
+  _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
+  data_root: "/content/data"
+  filename: "sst.week.mean.nc"
+  in_len: 12
+  out_len: 12
+  batch_size: 4
+  num_workers: 2
+  train_end_year: 2015
+  val_end_year: 2020
+  # Teacher patch (default: 15.625–20.625 lat, 65.625–72.375 lon)
+  patch_lat_deg: 5.0
+  patch_lon_deg: 6.75
+  stride_lat_deg: 5.0
+  stride_lon_deg: 6.75
+  # Optional: limit student grid region (null = use full globe)
+  # student_lat_range: [10.0, 30.0]
+  # student_lon_range: [60.0, 90.0]
+
+# Feature distillation: which blocks and loss weights
+distill:
+  enc_block_indices: [-2, -1]
+  loss_weight_enc: 1.0
+  loss_weight_dec: 1.0
+  loss_weight_output: 0.5
+
+optim:
+  total_batch_size: 32
+  micro_batch_size: 4
+  seed: 2022
+  method: "adamw"
+  lr: 1.0e-4
+  wd: 0.05
+  gradient_clip_val: 1.0
+  max_epochs: 50
+  warmup_percentage: 0.2
+  warmup_min_lr_ratio: 0.1
+  min_lr_ratio: 0.1
+  save_top_k: 1
+
+logging:
+  monitor_lr: true
+  monitor_device: false
+
+trainer:
+  check_val_every_n_epoch: 1
+  precision: "16-mixed"
+
+seed: 2022
