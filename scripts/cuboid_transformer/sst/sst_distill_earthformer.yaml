@@ -8,7 +8,7 @@ teacher_cfg_path: "sst.yaml"
 # Patch dataset for paired teacher/student
 dataset:
   _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
-  data_root: "/content/data"
+  data_root: "/kaggle/input/sst-week-mean-temperatures"
   filename: "sst.week.mean.nc"
   in_len: 12
   out_len: 12
@@ -55,3 +55,4 @@ trainer:
   precision: "16-mixed"
 
 seed: 2022
+
