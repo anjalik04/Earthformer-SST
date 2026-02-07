@@ -3,7 +3,7 @@
 # --- Dataset Configuration ---
 dataset:
   _target_: src.earthformer.datasets.sst.sst_datamodule.SSTDataModule
-  data_root: "/content/data"
+  data_root: "/kaggle/input/sst-week-mean-temperatures"
   in_len: 52
   out_len: 52
   batch_size: 2
