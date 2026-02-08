@@ -22,6 +22,7 @@ from omegaconf import OmegaConf
 import argparse
 
 from src.earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
+from src.earthformer.datasets.sst.sst_custom_loader import SSTCustomDistillDataModule
 from src.earthformer.utils.optim import SequentialLR, warmup_lambda
 from src.earthformer.utils.utils import get_parameter_names
 from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransformerModel
