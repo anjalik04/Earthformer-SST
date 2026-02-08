@@ -81,8 +81,8 @@ class SSTPatchDataModule(pl.LightningDataModule):
     def __init__(
         self,
         data_root: str,
-        in_len: int = 12,
-        out_len: int = 12,
+        in_len: int = 52,
+        out_len: int = 52,
         batch_size: int = 8,
         num_workers: int = 4,
         train_end_year: int = 2015,
@@ -327,6 +327,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
