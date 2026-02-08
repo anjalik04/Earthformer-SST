@@ -7,12 +7,34 @@ Offline: teacher is loaded from checkpoint and frozen.
 """
 
 import sys
-print(">>> [DEBUG] Script started. Importing libraries...")
+import os
+print(">>> [DEBUG] Script started.")
 sys.stdout.flush()
 
 import torch
 import pytorch_lightning as pl
-print(">>> [DEBUG] Basic imports successful.")
+print(f">>> [DEBUG] Torch ({torch.__version__}) and PL imported.")
+sys.stdout.flush()
+
+# --- THE CRITICAL JUNCTION ---
+print(">>> [DEBUG] Attempting to import local Earthformer modules...")
+sys.stdout.flush()
+
+from src.earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
+print(">>> [DEBUG] DataModule imported.")
+sys.stdout.flush()
+
+from src.earthformer.utils.optim import SequentialLR, warmup_lambda
+from src.earthformer.utils.utils import get_parameter_names
+from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransformerModel
+print(">>> [DEBUG] Core Model modules imported.")
+sys.stdout.flush()
+
+# THIS IS THE MOST LIKELY STICKING POINT
+print(">>> [DEBUG] Importing CuboidSSTPLModule from train_cuboid_sst.py...")
+sys.stdout.flush()
+from train_cuboid_sst import CuboidSSTPLModule
+print(">>> [DEBUG] All imports successful.")
 sys.stdout.flush()
 
 import os
@@ -326,5 +348,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
