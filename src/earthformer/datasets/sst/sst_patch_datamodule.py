@@ -181,6 +181,9 @@ class SSTPatchDataModule(pl.LightningDataModule):
             lat=self.teacher_lat_slice,
             lon=self.teacher_lon_slice,
         )
+
+        print(f">>> [DATA DEBUG] train slicing. before train_teacher")
+        sys.stdout.flush()
         
         # This line triggers a large data read into RAM
         train_teacher = ds_teacher["sst"].sel(time=train_slice).values.astype(np.float32)
@@ -320,5 +323,6 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
