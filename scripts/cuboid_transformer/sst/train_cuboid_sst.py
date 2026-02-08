@@ -1,25 +1,3 @@
-# import torch
-# import typing
-# import collections
-# import omegaconf
-# import omegaconf.base
-
-# # Comprehensive list of trusted globals for Earthformer checkpoints
-# torch.serialization.add_safe_globals([
-#     dict, 
-#     list, 
-#     set,
-#     collections.defaultdict,
-#     collections.OrderedDict,
-#     typing.Any,
-#     omegaconf.dictconfig.DictConfig,
-#     omegaconf.listconfig.ListConfig,
-#     omegaconf.base.ContainerMetadata,
-#     omegaconf.base.Metadata,
-#     omegaconf.nodes.AnyNode,
-#     omegaconf.nodes.ScalarNode
-# ])
-
 import warnings
 from shutil import copyfile
 import inspect
