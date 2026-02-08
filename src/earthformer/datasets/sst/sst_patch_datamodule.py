@@ -157,43 +157,75 @@ class SSTPatchDataModule(pl.LightningDataModule):
         return slices
 
     def setup(self, stage: Optional[str] = None) -> None:
+        import sys
+        print(f">>> [DATA DEBUG] Starting setup for stage: {stage}")
+        sys.stdout.flush()
+
         file_path = os.path.join(self.hparams.data_root, self.hparams.filename)
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Dataset file not found at {file_path}")
 
+        print(f">>> [DATA DEBUG] Opening NetCDF file: {file_path}")
+        sys.stdout.flush()
+        
         ds = xr.open_dataset(file_path)
         self._lat_values = ds.lat.values
         self._lon_values = ds.lon.values
 
+        # --- Teacher Normalization Calculation ---
+        print(">>> [DATA DEBUG] Loading teacher data for normalization...")
+        sys.stdout.flush()
+        
         train_slice = slice(None, str(self.hparams.train_end_year))
         ds_teacher = ds.sel(
             lat=self.teacher_lat_slice,
             lon=self.teacher_lon_slice,
         )
+        
+        # This line triggers a large data read into RAM
         train_teacher = ds_teacher["sst"].sel(time=train_slice).values.astype(np.float32)
         self.mean = float(np.nanmean(train_teacher))
         self.std = float(np.nanstd(train_teacher))
         if self.std < 1e-8:
             self.std = 1.0
+            
+        print(f">>> [DATA DEBUG] Stats computed. Mean: {self.mean:.4f}, Std: {self.std:.4f}")
+        sys.stdout.flush()
 
         teacher_full = ds_teacher["sst"].values.astype(np.float32)
         teacher_full = np.nan_to_num(teacher_full, nan=self.mean)
         teacher_norm = (teacher_full - self.mean) / self.std
         teacher_norm = teacher_norm[:, np.newaxis, :, :]
 
+        # --- Student Patch Grid Processing (THE BOTTLENECK) ---
         patch_slices = self._get_patch_slices(self._lat_values, self._lon_values)
+        num_patches = len(patch_slices)
+        print(f">>> [DATA DEBUG] Found {num_patches} patches to process in the grid.")
+        sys.stdout.flush()
+        
         student_patches = []
-        for (lat_sli, lon_sli) in patch_slices:
+        for i, (lat_sli, lon_sli) in enumerate(patch_slices):
+            # Print every 5 patches so we know it's moving
+            if i % 5 == 0:
+                print(f">>> [DATA DEBUG] Processing student patch {i}/{num_patches}...")
+                sys.stdout.flush()
+                
             sub = ds["sst"].isel(lat=lat_sli, lon=lon_sli).values.astype(np.float32)
             sub = np.nan_to_num(sub, nan=self.mean)
             sub = (sub - self.mean) / self.std
-            # Resize to teacher patch grid if needed (student patch may have different lat/lon count)
+            
             th, tw = teacher_norm.shape[2], teacher_norm.shape[3]
             if sub.shape[1] != th or sub.shape[2] != tw:
+                # If it hangs here, the _resize_to_match loop is the culprit
                 sub = _resize_to_match(sub, th, tw)
+                
             sub = sub[:, np.newaxis, :, :]
             student_patches.append(sub)
 
+        print(">>> [DATA DEBUG] Student patches all processed. Creating indices...")
+        sys.stdout.flush()
+
+        # --- Indexing and Dataset Creation ---
         patch_ids = list(range(len(student_patches)))
         time_index = ds.get_index("time")
         val_slice = slice(str(self.hparams.train_end_year + 1), str(self.hparams.val_end_year))
@@ -215,12 +247,17 @@ class SSTPatchDataModule(pl.LightningDataModule):
             )
 
         if stage == "fit" or stage is None:
+            print(">>> [DATA DEBUG] Finalizing Train/Val datasets...")
+            sys.stdout.flush()
             self.train_dataset = make_dataset(train_idx)
             self.val_dataset = make_dataset(val_idx)
+            
         if stage == "test" or stage is None:
             self.test_dataset = make_dataset(test_idx)
 
         ds.close()
+        print(">>> [DATA DEBUG] Setup method complete.")
+        sys.stdout.flush()
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -283,4 +320,5 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
