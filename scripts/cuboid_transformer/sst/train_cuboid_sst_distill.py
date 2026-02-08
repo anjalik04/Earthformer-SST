@@ -238,7 +238,6 @@ def get_parser():
 
 
 def main():
-    def main():
     print(">>> [DEBUG] Entering main function...")
     sys.stdout.flush()
     
@@ -327,4 +326,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
