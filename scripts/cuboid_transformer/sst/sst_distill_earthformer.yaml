@@ -52,9 +52,10 @@ logging:
 
 trainer:
   check_val_every_n_epoch: 1
-  precision: "16-mixed"
+  precision: "16"
 
 seed: 2022
+
 
 
 
