@@ -10,8 +10,8 @@ dataset:
   _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
   data_root: "/kaggle/input/sst-week-mean-temperatures"
   filename: "sst.week.mean.nc"
-  in_len: 52
-  out_len: 52
+  in_len: 12
+  out_len: 12
   batch_size: 4
   num_workers: 2
   train_end_year: 2015
@@ -55,5 +55,6 @@ trainer:
   precision: "16-mixed"
 
 seed: 2022
+
 
 
