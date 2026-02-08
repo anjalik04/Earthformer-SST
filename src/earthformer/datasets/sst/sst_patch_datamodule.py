@@ -263,18 +263,24 @@ def _resize_to_match(arr: np.ndarray, target_h: int, target_w: int) -> np.ndarra
 
 
 def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
-    """Resize 2D array to target size using numpy (nearest-style block reduce/sum then scale)."""
-    h, w = x.shape
-    if h == target_h and w == target_w:
-        return x
-    scale_h = h / target_h
-    scale_w = w / target_w
-    out = np.zeros((target_h, target_w), dtype=x.dtype)
-    for i in range(target_h):
-        for j in range(target_w):
-            i0 = int(i * scale_h)
-            i1 = min(int((i + 1) * scale_h), h)
-            j0 = int(j * scale_w)
-            j1 = min(int((j + 1) * scale_w), w)
-            out[i, j] = np.nanmean(x[i0:i1, j0:j1])
-    return out
+    # """Resize 2D array to target size using numpy (nearest-style block reduce/sum then scale)."""
+    # h, w = x.shape
+    # if h == target_h and w == target_w:
+    #     return x
+    # scale_h = h / target_h
+    # scale_w = w / target_w
+    # out = np.zeros((target_h, target_w), dtype=x.dtype)
+    # for i in range(target_h):
+    #     for j in range(target_w):
+    #         i0 = int(i * scale_h)
+    #         i1 = min(int((i + 1) * scale_h), h)
+    #         j0 = int(j * scale_w)
+    #         j1 = min(int((j + 1) * scale_w), w)
+    #         out[i, j] = np.nanmean(x[i0:i1, j0:j1])
+    # return out
+    import torch
+    import torch.nn.functional as F
+    tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
+    resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
+    return resized.squeeze().numpy()
+
