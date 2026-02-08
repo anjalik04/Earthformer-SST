@@ -254,6 +254,18 @@ class SSTPatchDataModule(pl.LightningDataModule):
         print(">>> [DATA DEBUG] Setup method complete.")
         sys.stdout.flush()
 
+        # At the very end of your setup() function
+        if not os.path.exists("/kaggle/working/thermodistill_cache.pt"):
+            print(">>> [AUTO-CACHE] Saving processed data for future runs...")
+            torch.save({
+                'mean': self.mean,
+                'std': self.std,
+                'lat_values': self._lat_values,
+                'lon_values': self._lon_values,
+                'teacher_norm': self.train_dataset.teacher_data, 
+                'student_patches': self.train_dataset.student_patches
+            }, "/kaggle/working/thermodistill_cache.pt")
+
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             self.train_dataset,
@@ -315,6 +327,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
