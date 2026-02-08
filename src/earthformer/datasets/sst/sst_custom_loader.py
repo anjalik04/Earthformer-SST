@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from typing import Optional
-from earthformer.datasets.sst.sst_patch_dataset import SSTPatchDataset
+from earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataset
 from earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
 
 class SSTCustomDistillDataModule(SSTPatchDataModule):
