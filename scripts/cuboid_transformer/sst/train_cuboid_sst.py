@@ -210,7 +210,7 @@ class CuboidSSTPLModule(pl.LightningModule):
         cfg = OmegaConf.create()
         cfg.check_val_every_n_epoch = 1
         cfg.log_step_ratio = 0.01
-        cfg.precision = "16-mixed"
+        cfg.precision = "16"
         return cfg
 
     def configure_optimizers(self):
@@ -289,7 +289,7 @@ class CuboidSSTPLModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         pred_seq, _, _, target_seq = self(batch)
-        if self.trainer.precision == "16-mixed":
+        if self.trainer.precision == "16":
             pred_seq = pred_seq.float()
         self.valid_mse(pred_seq, target_seq)
         self.valid_mae(pred_seq, target_seq)
@@ -305,7 +305,7 @@ class CuboidSSTPLModule(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         pred_seq, _, _, target_seq = self(batch)
-        if self.trainer.precision == "16-mixed":
+        if self.trainer.precision == "16":
             pred_seq = pred_seq.float()
         self.test_mse(pred_seq, target_seq)
         self.test_mae(pred_seq, target_seq)
