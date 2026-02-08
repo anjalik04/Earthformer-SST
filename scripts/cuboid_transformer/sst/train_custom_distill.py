@@ -249,7 +249,7 @@ def main():
 
     dataset_cfg = OmegaConf.to_object(oc.dataset)
     dataset_cfg.pop("_target_", None)
-    dm = SSTCustomDistillDataModule(cache_path="/kaggle/input/limited-teacher-student-sst-dataset/limited_thermodistill_cache.pt",**dataset_cfg)
+    dm = SSTPatchDataModule(data_root="placeholder", **dataset_cfg)
     print(">>> [DEBUG] Datamodule before fit Complete...")
     sys.stdout.flush()
     dm.setup("fit")
