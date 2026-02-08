@@ -1,58 +1,253 @@
-import torch
+"""
+Patch-aware SST DataModule for teacher-student distillation.
+
+Yields paired (teacher_x, student_x, student_y, patch_id) for each time window.
+Teacher is fixed to one patch; student strides over a grid of patches.
+Normalization is computed from the teacher patch training period.
+"""
+import os
+from typing import List, Tuple, Optional
 import numpy as np
-from typing import Optional
-from earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataset
-from earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
+import torch
+import xarray as xr
+from torch.utils.data import Dataset, DataLoader
+import pytorch_lightning as pl
 
-class SSTCustomDistillDataModule(SSTPatchDataModule):
-    def __init__(self, cache_path: str, **kwargs):
-        base_keys = ['data_dir', 'batch_size', 'num_workers', 'in_len', 'out_len', 'layout', 'img_size']
-        
-        # 2. Separate kwargs into 'base' and 'custom'
-        base_kwargs = {k: v for k, v in kwargs.items() if k in base_keys}
-        custom_kwargs = {k: v for k, v in kwargs.items() if k not in base_keys}
-        
-        # 3. Initialize the parent with only the keys it knows
-        super().__init__(**base_kwargs)
-        
-        # 4. Store your custom keys manually
-        self.cache_path = cache_path
-        self.train_start_year = custom_kwargs.get('train_start_year', 2001)
-        self.train_end_year = custom_kwargs.get('train_end_year', 2015)
-        self.val_end_year = custom_kwargs.get('val_end_year', 2016)
 
-    def setup(self, stage: Optional[str] = None):
-        # Load the preprocessed file
-        # Resolve: Future pickle warning by setting weights_only=False for trusted data
-        data = torch.load(self.cache_path, map_location="cpu", weights_only=False)
+def _parse_slice(s: slice) -> Tuple[float, float]:
+    """Return (start, stop) from a slice for lat/lon."""
+    return (s.start, s.stop)
+
+
+class SSTPatchDataset(Dataset):
+    """
+    Dataset that returns paired teacher and student patch sequences for distillation.
+    Each item: (teacher_x, teacher_y, student_x, student_y, patch_id).
+    Shapes: (T_in, C, H, W), (T_out, C, H, W), (T_in, C, H, W), (T_out, C, H, W), int.
+    """
+    def __init__(
+        self,
+        teacher_data: np.ndarray,
+        student_patches: List[np.ndarray],
+        patch_ids: List[int],
+        in_len: int,
+        out_len: int,
+    ):
+        """
+        Args:
+            teacher_data: (T_total, C, H, W) normalized array for teacher patch.
+            student_patches: list of (T_total, C, H, W) normalized arrays, one per patch.
+            patch_ids: list of patch indices (same length as student_patches).
+            in_len: input sequence length.
+            out_len: target sequence length.
+        """
+        self.teacher_data = teacher_data
+        self.student_patches = student_patches
+        self.patch_ids = patch_ids
+        self.in_len = in_len
+        self.out_len = out_len
+        self.seq_len = in_len + out_len
+        self.n_patches = len(student_patches)
+        n_times = teacher_data.shape[0] - self.seq_len + 1
+        self.length = n_times * self.n_patches
+
+    def __len__(self) -> int:
+        return self.length
+
+    def __getitem__(self, idx: int):
+        patch_idx = idx % self.n_patches
+        time_idx = idx // self.n_patches
+        student_data = self.student_patches[patch_idx]
+        pid = self.patch_ids[patch_idx]
+
+        t_end = time_idx + self.seq_len
+        teacher_seq = self.teacher_data[time_idx:t_end]
+        student_seq = student_data[time_idx:t_end]
+
+        teacher_x = torch.from_numpy(teacher_seq[:self.in_len])
+        teacher_y = torch.from_numpy(teacher_seq[self.in_len:self.seq_len])
+        student_x = torch.from_numpy(student_seq[:self.in_len])
+        student_y = torch.from_numpy(student_seq[self.in_len:self.seq_len])
+
+        return teacher_x, teacher_y, student_x, student_y, pid
+
+
+class SSTPatchDataModule(pl.LightningDataModule):
+    """
+    Loads full SST data, computes normalization from teacher patch,
+    and builds a grid of student patches with configurable stride.
+    """
+
+    def __init__(
+        self,
+        data_root: str,
+        in_len: int = 12,
+        out_len: int = 12,
+        batch_size: int = 8,
+        num_workers: int = 4,
+        train_start_year: int = 2001,
+        train_end_year: int = 2015,
+        test_year: int = 2016,
+        teacher_lat_slice: Optional[slice] = None,
+        teacher_lon_slice: Optional[slice] = None,
+        patch_lat_deg: float = 5.0,
+        patch_lon_deg: float = 6.75,
+        stride_lat_deg: Optional[float] = None,
+        stride_lon_deg: Optional[float] = None,
+        student_lat_range: Optional[Tuple[float, float]] = None,
+        student_lon_range: Optional[Tuple[float, float]] = None,
+        filename: str = "sst.week.mean.nc",
+    ):
+        super().__init__()
+        if teacher_lat_slice is None:
+            teacher_lat_slice = slice(15.625, 20.625)
+        if teacher_lon_slice is None:
+            teacher_lon_slice = slice(65.625, 72.375)
+        if stride_lat_deg is None:
+            stride_lat_deg = patch_lat_deg
+        if stride_lon_deg is None:
+            stride_lon_deg = patch_lon_deg
+        self.save_hyperparameters(ignore=["teacher_lat_slice", "teacher_lon_slice"])
+        self.teacher_lat_slice = teacher_lat_slice
+        self.teacher_lon_slice = teacher_lon_slice
+
+        self.mean = None
+        self.std = None
+        self.train_dataset = None
+        self.val_dataset = None
+        self.test_dataset = None
+        self._lat_values = None
+        self._lon_values = None
+
+    def prepare_data(self) -> None:
+        pass
+
+    def _get_patch_slices(
+        self,
+        lat_values: np.ndarray,
+        lon_values: np.ndarray,
+    ) -> List[Tuple[slice, slice]]:
+        """Build list of (lat_slice, lon_slice) for student grid in index space."""
+        lat_min, lat_max = float(lat_values.min()), float(lat_values.max())
+        lon_min, lon_max = float(lon_values.min()), float(lon_values.max())
+        p_lat = self.hparams.patch_lat_deg
+        p_lon = self.hparams.patch_lon_deg
+        s_lat = self.hparams.stride_lat_deg
+        s_lon = self.hparams.stride_lon_deg
+
+        if self.hparams.student_lat_range is not None:
+            lat_min = max(lat_min, self.hparams.student_lat_range[0])
+            lat_max = min(lat_max, self.hparams.student_lat_range[1])
+        if self.hparams.student_lon_range is not None:
+            lon_min = max(lon_min, self.hparams.student_lon_range[0])
+            lon_max = min(lon_max, self.hparams.student_lon_range[1])
+
+        slices = []
+        lat_start = lat_min
+        while lat_start + p_lat <= lat_max + 1e-6:
+            lon_start = lon_min
+            while lon_start + p_lon <= lon_max + 1e-6:
+                lat_sel = (lat_values >= lat_start) & (lat_values < lat_start + p_lat)
+                lon_sel = (lon_values >= lon_start) & (lon_values < lon_start + p_lon)
+                if np.any(lat_sel) and np.any(lon_sel):
+                    lat_idx = np.where(lat_sel)[0]
+                    lon_idx = np.where(lon_sel)[0]
+                    slices.append((slice(lat_idx[0], lat_idx[-1] + 1), slice(lon_idx[0], lon_idx[-1] + 1)))
+                lon_start += s_lon
+            lat_start += s_lat
+        return slices
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        import torch
+        # 1. Load the preprocessed file
+        cache_path = "/kaggle/input/limited-teacher-student-sst-dataset/limited_thermodistill_cache.pt"
         
-        self.mean, self.std = data['mean'], data['std']
+        print(f">>> [LOADER] Loading preprocessed data from {cache_path}")
+        data = torch.load(cache_path, map_location="cpu", weights_only=False)
+        
+        self.mean = data['mean']
+        self.std = data['std']
         time_index = data['time_index']
+        
+        # 2. Convert to float32
         teacher_norm = torch.from_numpy(data['teacher_norm']).to(torch.float32)
         all_student_data = data['all_student_data'].to(torch.float32)
 
-        # Strict Temporal Slicing: 2001-2015 and 2016
-        train_idx = time_index.slice_indexer("2001", "2015")
-        test_idx = time_index.slice_indexer("2016", "2016")
+        # 3. Time Splitting Logic (2001-2015 Train, 2016 Test)
+        train_slice = slice(str(self.hparams.train_start_year), str(self.hparams.train_end_year))
+        test_slice = slice(str(self.hparams.test_year), str(self.hparams.test_year))
 
-        def _build_ds(t_idx):
-            # Extract time steps for all 10 patches
-            t_teacher = teacher_norm[t_idx].numpy()
-            t_students = [all_student_data[i][t_idx].numpy() for i in range(all_student_data.shape[0])]
+        train_idx = time_index.slice_indexer(train_slice.start, train_slice.stop)
+        test_idx = time_index.slice_indexer(test_slice.start, test_slice.stop)
+
+        # 4. Helper to create Dataset instances
+        def make_dataset(t_idx):
+            t_teacher = teacher_norm[t_idx]
+            # Use all 10 longitudinal patches from the cache
+            t_students = [all_student_data[i][t_idx] for i in range(all_student_data.shape[0])]
             
             return SSTPatchDataset(
-                teacher_data=t_teacher,
-                student_patches=t_students,
+                teacher_data=t_teacher.numpy(), 
+                student_patches=[p.numpy() for p in t_students],
                 patch_ids=list(range(len(t_students))),
                 in_len=self.hparams.in_len,
                 out_len=self.hparams.out_len,
             )
 
         if stage == "fit" or stage is None:
-            self.train_dataset = _build_ds(train_idx)
-            self.val_dataset = _build_ds(test_idx)
-        if stage == "test":
-            self.test_dataset = _build_ds(test_idx)
+            self.train_dataset = make_dataset(train_idx)
+            self.val_dataset = make_dataset(test_idx) # Use 2016 for validation during fit
+        if stage == "test" or stage is None:
+            self.test_dataset = make_dataset(test_idx)
 
-        print(f">>> [CUSTOM LOADER] Train weeks: {train_idx.stop - train_idx.start}")
-        print(f">>> [CUSTOM LOADER] Test weeks: {test_idx.stop - test_idx.start}")
+        def get_idx_len(idx):
+            return idx.stop - idx.start
+
+        print(f">>> [LOADER] Setup complete. Train: {get_idx_len(train_idx)} weeks, Test: {get_idx_len(test_idx)} weeks")
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.hparams.batch_size,
+            shuffle=True,
+            num_workers=self.hparams.num_workers,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.hparams.batch_size,
+            shuffle=False,
+            num_workers=self.hparams.num_workers,
+            pin_memory=True,
+        )
+
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.hparams.batch_size,
+            shuffle=False,
+            num_workers=self.hparams.num_workers,
+            pin_memory=True,
+        )
+
+
+def _resize_to_match(arr: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Resize (T, H, W) to (T, target_h, target_w) via bilinear interpolation."""
+    import numpy as np
+    t, h, w = arr.shape
+    if h == target_h and w == target_w:
+        return arr
+    out = np.zeros((t, target_h, target_w), dtype=arr.dtype)
+    for i in range(t):
+        out[i] = _resize_2d(arr[i], target_h, target_w)
+    return out
+
+
+def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    import torch
+    import torch.nn.functional as F
+    tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
+    resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
+    return resized.squeeze().numpy()
