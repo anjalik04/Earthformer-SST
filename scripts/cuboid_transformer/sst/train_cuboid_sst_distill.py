@@ -103,6 +103,8 @@ class CuboidDistillPLModule(pl.LightningModule):
         for p in self.teacher.parameters():
             p.requires_grad = False
         self.teacher.eval()
+        if hasattr(self.teacher, "checkpoint_level"):
+            self.teacher.checkpoint_level = 0
         oc = teacher_pl.oc
         self.student = build_cuboid_from_oc(oc)
         self.oc = oc
@@ -322,6 +324,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
