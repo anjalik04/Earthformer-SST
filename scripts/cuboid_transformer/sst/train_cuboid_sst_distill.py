@@ -182,7 +182,7 @@ class CuboidDistillPLModule(pl.LightningModule):
         student_x = student_x.permute(0, 1, 3, 4, 2)
         student_y = student_y.permute(0, 1, 3, 4, 2)
         pred = self.student(student_x)
-        if self.trainer.precision == "16-mixed":
+        if self.trainer.precision == "16":
             pred = pred.float()
         self.valid_mse(pred, student_y)
         self.valid_mae(pred, student_y)
@@ -303,7 +303,7 @@ def main():
         max_epochs=optim_cfg["max_epochs"],
         check_val_every_n_epoch=oc.trainer.get("check_val_every_n_epoch", 1),
         gradient_clip_val=optim_cfg.get("gradient_clip_val", 1.0),
-        precision=oc.trainer.get("precision", "16-mixed"),
+        precision=oc.trainer.get("precision", "16"),
         accumulate_grad_batches=accumulate,
         default_root_dir=pl_module.save_dir,
         callbacks=callbacks,
@@ -322,6 +322,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
