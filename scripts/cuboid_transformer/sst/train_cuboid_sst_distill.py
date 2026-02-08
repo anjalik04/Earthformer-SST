@@ -5,6 +5,16 @@ Teacher is fixed on one patch; student is trained on striding patches with
 feature distillation (encoder + decoder features) and optional output loss.
 Offline: teacher is loaded from checkpoint and frozen.
 """
+
+import sys
+print(">>> [DEBUG] Script started. Importing libraries...")
+sys.stdout.flush()
+
+import torch
+import pytorch_lightning as pl
+print(">>> [DEBUG] Basic imports successful.")
+sys.stdout.flush()
+
 import os
 import warnings
 from shutil import copyfile
@@ -228,6 +238,10 @@ def get_parser():
 
 
 def main():
+    def main():
+    print(">>> [DEBUG] Entering main function...")
+    sys.stdout.flush()
+    
     args = get_parser().parse_args()
     oc = OmegaConf.load(open(args.cfg, "r"))
     seed = oc.get("seed", 2022)
@@ -268,6 +282,14 @@ def main():
     num_gpus = max(1, args.gpus)
     accumulate = max(1, total_batch // (micro_batch * num_gpus))
 
+    # After config loading
+    print(f">>> [DEBUG] Loading config from: {args.cfg}")
+    sys.stdout.flush()
+
+    # Before model instantiation (Teacher/Student)
+    print(">>> [DEBUG] Initializing Teacher and Student models...")
+    sys.stdout.flush()
+    
     checkpoint_callback = ModelCheckpoint(
         monitor="valid_mse_epoch",
         dirpath=os.path.join(pl_module.save_dir, "checkpoints"),
@@ -305,3 +327,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
