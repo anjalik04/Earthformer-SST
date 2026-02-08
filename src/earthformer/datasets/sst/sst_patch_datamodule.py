@@ -168,6 +168,7 @@ class SSTPatchDataModule(pl.LightningDataModule):
         
         self._lat_values = ds.lat.values
         self._lon_values = ds.lon.values
+        time_index = ds.get_index("time")
 
         # --- 1. Compute Stats on a SAMPLE to save RAM ---
         print(">>> [DEBUG] Computing stats on teacher area (subsetting time to save RAM)...")
@@ -314,6 +315,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
