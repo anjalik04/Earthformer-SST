@@ -1,0 +1,27 @@
+dataset:
+  train_start_year: 2001
+  train_end_year: 2015
+  val_end_year: 2016  # Use 2016 for testing/validation
+  in_len: 12          # Must match your Teacher Checkpoint
+  out_len: 12           # Must match your Teacher Checkpoint
+  batch_size: 4       # Since we only have 10 patches, keep batch size small
+  num_workers: 4
+
+model:
+  input_shape: [12, 21, 28, 1]
+  target_shape: [12, 21, 28, 1]
+  # ... Copy the rest of the model architecture from your sst_distill_earthformer.yaml ...
+
+optim:
+  max_epochs: 100
+  lr: 0.001
+  warmup_percentage: 0.1
+  # Since dataset is small, we want to save checkpoints often
+  save_top_k: 3
+
+distill:
+  teacher_ckpt_path: "sst_colab_run_1/checkpoints/last.ckpt"
+  teacher_cfg_path: "sst.yaml"
+  loss_weight_enc: 1.0
+  loss_weight_dec: 1.0
+  loss_weight_output: 0.5
