@@ -29,3 +29,7 @@ distill:
   loss_weight_enc: 1.0
   loss_weight_dec: 1.0
   loss_weight_output: 0.5
+
+logging:
+  monitor_lr: True
+  logger_type: "tensorboard"
