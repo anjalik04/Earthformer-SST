@@ -6,6 +6,7 @@ feature distillation (encoder + decoder features) and optional output loss.
 Offline: teacher is loaded from checkpoint and frozen.
 """
 import os
+import sys
 import warnings
 from shutil import copyfile
 import numpy as np
@@ -321,6 +322,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
