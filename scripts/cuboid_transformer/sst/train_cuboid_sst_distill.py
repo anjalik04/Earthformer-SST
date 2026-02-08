@@ -280,6 +280,9 @@ def main():
     dm = SSTPatchDataModule(**dataset_cfg)
     dm.setup("fit")
 
+    print(">>> [DEBUG] Datamodule Setup Complete...")
+    sys.stdout.flush()
+    
     teacher_ckpt = oc.teacher_ckpt_path
     if not os.path.isabs(teacher_ckpt):
         teacher_ckpt = os.path.join(exps_dir, teacher_ckpt)
@@ -348,6 +351,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
