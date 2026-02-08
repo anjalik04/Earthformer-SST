@@ -13,7 +13,7 @@ dataset:
   in_len: 12
   out_len: 12
   batch_size: 4
-  num_workers: 2
+  num_workers: 4
   train_end_year: 2015
   val_end_year: 2020
   # Teacher patch (default: 15.625–20.625 lat, 65.625–72.375 lon)
@@ -55,6 +55,7 @@ trainer:
   precision: "16"
 
 seed: 2022
+
 
 
 
