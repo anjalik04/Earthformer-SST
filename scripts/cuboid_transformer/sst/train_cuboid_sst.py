@@ -306,7 +306,7 @@ class CuboidSSTPLModule(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         _, loss, _, _ = self(batch)
-        self.log('train_loss', loss, on_step=True, on_epoch=False, prog_bar=True)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
