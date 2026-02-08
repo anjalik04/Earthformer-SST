@@ -157,75 +157,27 @@ class SSTPatchDataModule(pl.LightningDataModule):
         return slices
 
     def setup(self, stage: Optional[str] = None) -> None:
-        import sys
         import torch
-        import torch.nn.functional as F
-        print(f">>> [DATA DEBUG] Starting Memory-Lean Setup for stage: {stage}")
-        sys.stdout.flush()
-
-        file_path = os.path.join(self.hparams.data_root, self.hparams.filename)
-        ds = xr.open_dataset(file_path) # No chunks needed if dask is missing
+        # 1. Load the preprocessed file from your uploaded dataset path
+        # Replace 'your-dataset-name' with the actual name Kaggle gave your upload
+        cache_path = "/kaggle/input/teacher-student-sst-dataset/thermodistill_cache.pt"
         
-        self._lat_values = ds.lat.values
-        self._lon_values = ds.lon.values
-        time_index = ds.get_index("time")
-
-        # --- 1. Compute Stats on a SAMPLE to save RAM ---
-        print(">>> [DEBUG] Computing stats on teacher area (subsetting time to save RAM)...")
-        sys.stdout.flush()
+        print(f">>> [LOADER] Loading preprocessed data from {cache_path}")
+        # weights_only=False is required because of the NumPy/Pandas objects
+        data = torch.load(cache_path, map_location="cpu", weights_only=False)
         
+        self.mean = data['mean']
+        self.std = data['std']
+        time_index = data['time_index']
+        
+        # 2. Convert half-precision to float32 for training
+        # Teacher: (T, C, H, W) -> float32
+        teacher_norm = data['teacher_norm'].to(torch.float32)
+        # Student: (N_patches, T, C, H, W) -> float32
+        all_student_data = data['all_student_data'].to(torch.float32)
+
+        # 3. Time Splitting Logic
         train_slice = slice(None, str(self.hparams.train_end_year))
-        ds_teacher = ds.sel(lat=self.teacher_lat_slice, lon=self.teacher_lon_slice)
-        
-        # Pull ONLY the teacher training area, not the whole world
-        # This is roughly 1/100th the memory of the global load
-        teacher_train_data = ds_teacher["sst"].sel(time=train_slice).values.astype(np.float32)
-        
-        self.mean = float(np.nanmean(teacher_train_data))
-        self.std = float(np.nanstd(teacher_train_data))
-        if self.std < 1e-8: self.std = 1.0
-        
-        print(f">>> [DATA DEBUG] Stats computed. Mean: {self.mean:.2f}, Std: {self.std:.2f}")
-        
-        # --- 2. Process Teacher Full (Still fits in RAM because it's a small slice) ---
-        teacher_full = ds_teacher["sst"].values.astype(np.float32)
-        teacher_full = np.nan_to_num(teacher_full, nan=self.mean)
-        teacher_norm = (teacher_full - self.mean) / self.std
-        teacher_norm = teacher_norm[:, np.newaxis, :, :]
-        th, tw = teacher_norm.shape[2], teacher_norm.shape[3]
-
-        # --- 3. Process Student Patches ONE-BY-ONE ---
-        patch_slices = self._get_patch_slices(self._lat_values, self._lon_values)
-        num_patches = len(patch_slices)
-        print(f">>> [DATA DEBUG] Processing {num_patches} patches...")
-        sys.stdout.flush()
-        
-        student_patches = []
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        for i, (lat_sli, lon_sli) in enumerate(patch_slices):
-            # isel().values here only pulls ONE patch at a time into RAM
-            sub = ds["sst"].isel(lat=lat_sli, lon=lon_sli).values.astype(np.float32)
-            sub = np.nan_to_num(sub, nan=self.mean)
-            sub = (sub - self.mean) / self.std
-            
-            if sub.shape[1] != th or sub.shape[2] != tw:
-                # Still use Torch for the speed of resizing, but move to CPU immediately after
-                tmp_tensor = torch.from_numpy(sub).unsqueeze(1).to(device)
-                resized = F.interpolate(tmp_tensor, size=(th, tw), mode='bilinear')
-                sub = resized.squeeze(1).cpu().numpy()
-                
-            student_patches.append(sub[:, np.newaxis, :, :])
-            
-            if i % 25 == 0:
-                print(f">>> [DATA DEBUG] Patch {i}/{num_patches} done.")
-                sys.stdout.flush()
-
-        print(">>> [DATA DEBUG] Student patches all processed. Creating indices...")
-        sys.stdout.flush()
-
-        # --- 4. Indexing and Dataset Creation ---
-        patch_ids = list(range(len(student_patches)))
         val_slice = slice(str(self.hparams.train_end_year + 1), str(self.hparams.val_end_year))
         test_slice = slice(str(self.hparams.val_end_year + 1), None)
 
@@ -233,13 +185,17 @@ class SSTPatchDataModule(pl.LightningDataModule):
         val_idx = time_index.slice_indexer(val_slice.start, val_slice.stop)
         test_idx = time_index.slice_indexer(test_slice.start, test_slice.stop)
 
+        # 4. Helper to create Dataset instances
         def make_dataset(t_idx):
+            # Extract the correct time steps for all patches at once
             t_teacher = teacher_norm[t_idx]
-            t_students = [p[t_idx] for p in student_patches]
+            # Slicing the student tensor: [All Patches, Time Subset, C, H, W]
+            t_students = [all_student_data[i][t_idx] for i in range(all_student_data.shape[0])]
+            
             return SSTPatchDataset(
-                teacher_data=t_teacher,
-                student_patches=t_students,
-                patch_ids=patch_ids,
+                teacher_data=t_teacher.numpy(), # Dataset expects numpy arrays
+                student_patches=[p.numpy() for p in t_students],
+                patch_ids=list(range(len(t_students))),
                 in_len=self.hparams.in_len,
                 out_len=self.hparams.out_len,
             )
@@ -250,21 +206,7 @@ class SSTPatchDataModule(pl.LightningDataModule):
         if stage == "test" or stage is None:
             self.test_dataset = make_dataset(test_idx)
 
-        ds.close()
-        print(">>> [DATA DEBUG] Setup method complete.")
-        sys.stdout.flush()
-
-        # At the very end of your setup() function
-        if not os.path.exists("/kaggle/working/thermodistill_cache.pt"):
-            print(">>> [AUTO-CACHE] Saving processed data for future runs...")
-            torch.save({
-                'mean': self.mean,
-                'std': self.std,
-                'lat_values': self._lat_values,
-                'lon_values': self._lon_values,
-                'teacher_norm': self.train_dataset.teacher_data, 
-                'student_patches': self.train_dataset.student_patches
-            }, "/kaggle/working/thermodistill_cache.pt")
+        print(f">>> [LOADER] Setup complete. Train: {len(train_idx)} weeks, Val: {len(val_idx)} weeks")
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -327,6 +269,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
