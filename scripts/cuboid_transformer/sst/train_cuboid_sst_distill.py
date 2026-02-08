@@ -5,38 +5,6 @@ Teacher is fixed on one patch; student is trained on striding patches with
 feature distillation (encoder + decoder features) and optional output loss.
 Offline: teacher is loaded from checkpoint and frozen.
 """
-
-import sys
-import os
-print(">>> [DEBUG] Script started.")
-sys.stdout.flush()
-
-import torch
-import pytorch_lightning as pl
-print(f">>> [DEBUG] Torch ({torch.__version__}) and PL imported.")
-sys.stdout.flush()
-
-# --- THE CRITICAL JUNCTION ---
-print(">>> [DEBUG] Attempting to import local Earthformer modules...")
-sys.stdout.flush()
-
-from src.earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
-print(">>> [DEBUG] DataModule imported.")
-sys.stdout.flush()
-
-from src.earthformer.utils.optim import SequentialLR, warmup_lambda
-from src.earthformer.utils.utils import get_parameter_names
-from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransformerModel
-print(">>> [DEBUG] Core Model modules imported.")
-sys.stdout.flush()
-
-# THIS IS THE MOST LIKELY STICKING POINT
-print(">>> [DEBUG] Importing CuboidSSTPLModule from train_cuboid_sst.py...")
-sys.stdout.flush()
-from train_cuboid_sst import CuboidSSTPLModule
-print(">>> [DEBUG] All imports successful.")
-sys.stdout.flush()
-
 import os
 import warnings
 from shutil import copyfile
@@ -278,6 +246,8 @@ def main():
     dataset_cfg = OmegaConf.to_object(oc.dataset)
     dataset_cfg.pop("_target_", None)
     dm = SSTPatchDataModule(**dataset_cfg)
+    print(">>> [DEBUG] Datamodule before fit Complete...")
+    sys.stdout.flush()
     dm.setup("fit")
 
     print(">>> [DEBUG] Datamodule Setup Complete...")
@@ -351,6 +321,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
