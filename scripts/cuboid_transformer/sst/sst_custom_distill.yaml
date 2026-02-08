@@ -16,6 +16,7 @@ model:
   # ... Copy the rest of the model architecture from your sst_distill_earthformer.yaml ...
 
 optim:
+  total_batch_size: 4
   max_epochs: 100
   lr: 0.001
   warmup_percentage: 0.1
