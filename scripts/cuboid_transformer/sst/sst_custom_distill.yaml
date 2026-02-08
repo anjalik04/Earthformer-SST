@@ -4,7 +4,7 @@ teacher_cfg_path: "sst.yaml"
 dataset:
   train_start_year: 2001
   train_end_year: 2015
-  val_end_year: 2016  # Use 2016 for testing/validation
+  test_year: 2016  # Use 2016 for testing
   in_len: 12          # Must match your Teacher Checkpoint
   out_len: 12           # Must match your Teacher Checkpoint
   batch_size: 4       # Since we only have 10 patches, keep batch size small
