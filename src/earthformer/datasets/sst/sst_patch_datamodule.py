@@ -172,9 +172,12 @@ class SSTPatchDataModule(pl.LightningDataModule):
         
         # 2. Convert half-precision to float32 for training
         # Teacher: (T, C, H, W) -> float32
-        teacher_norm = data['teacher_norm'].to(torch.float32)
+        teacher_norm = torch.from_numpy(data['teacher_norm']).to(torch.float32)
         # Student: (N_patches, T, C, H, W) -> float32
-        all_student_data = data['all_student_data'].to(torch.float32)
+        if isinstance(data['all_student_data'], np.ndarray):
+            all_student_data = torch.from_numpy(data['all_student_data']).to(torch.float32)
+        else:
+            all_student_data = data['all_student_data'].to(torch.float32)
 
         # 3. Time Splitting Logic
         train_slice = slice(None, str(self.hparams.train_end_year))
@@ -269,6 +272,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
