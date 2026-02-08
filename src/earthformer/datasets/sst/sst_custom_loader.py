@@ -6,8 +6,20 @@ from earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
 
 class SSTCustomDistillDataModule(SSTPatchDataModule):
     def __init__(self, cache_path: str, **kwargs):
-        super().__init__(**kwargs)
+        base_keys = ['data_dir', 'batch_size', 'num_workers', 'in_len', 'out_len', 'layout', 'img_size']
+        
+        # 2. Separate kwargs into 'base' and 'custom'
+        base_kwargs = {k: v for k, v in kwargs.items() if k in base_keys}
+        custom_kwargs = {k: v for k, v in kwargs.items() if k not in base_keys}
+        
+        # 3. Initialize the parent with only the keys it knows
+        super().__init__(**base_kwargs)
+        
+        # 4. Store your custom keys manually
         self.cache_path = cache_path
+        self.train_start_year = custom_kwargs.get('train_start_year', 2001)
+        self.train_end_year = custom_kwargs.get('train_end_year', 2015)
+        self.val_end_year = custom_kwargs.get('val_end_year', 2016)
 
     def setup(self, stage: Optional[str] = None):
         # Load the preprocessed file
