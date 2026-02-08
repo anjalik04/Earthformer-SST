@@ -209,7 +209,12 @@ class SSTPatchDataModule(pl.LightningDataModule):
         if stage == "test" or stage is None:
             self.test_dataset = make_dataset(test_idx)
 
-        print(f">>> [LOADER] Setup complete. Train: {len(train_idx)} weeks, Val: {len(val_idx)} weeks")
+        def get_idx_len(idx):
+            if isinstance(idx, slice):
+                return idx.stop - idx.start
+            return len(idx)
+
+        print(f">>> [LOADER] Setup complete. Train: {get_idx_len(train_idx)} weeks, Val: {get_idx_len(val_idx)} weeks")
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -272,6 +277,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
