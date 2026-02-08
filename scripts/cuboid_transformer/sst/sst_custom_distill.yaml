@@ -15,6 +15,13 @@ model:
   target_shape: [12, 21, 28, 1]
   # ... Copy the rest of the model architecture from your sst_distill_earthformer.yaml ...
 
+trainer:
+  check_val_every_n_epoch: 1
+  precision: 16
+  max_epochs: 50
+  acceleratory: "gpu"
+  devices: 1
+
 optim:
   total_batch_size: 4
   max_epochs: 100
