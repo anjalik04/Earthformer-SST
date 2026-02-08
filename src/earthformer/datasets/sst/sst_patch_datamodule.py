@@ -160,80 +160,64 @@ class SSTPatchDataModule(pl.LightningDataModule):
         import sys
         import torch
         import torch.nn.functional as F
-        print(f">>> [DATA DEBUG] Starting setup for stage: {stage}")
+        print(f">>> [DATA DEBUG] Starting Memory-Lean Setup for stage: {stage}")
         sys.stdout.flush()
 
         file_path = os.path.join(self.hparams.data_root, self.hparams.filename)
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Dataset file not found at {file_path}")
-
-        print(f">>> [DATA DEBUG] Opening NetCDF file: {file_path}")
-        sys.stdout.flush()
+        ds = xr.open_dataset(file_path) # No chunks needed if dask is missing
         
-        # Open with chunks to allow lazy Dask computation if the file is large
-        ds = xr.open_dataset(file_path, chunks={'time': 500})
         self._lat_values = ds.lat.values
         self._lon_values = ds.lon.values
 
-        # --- 1. Teacher Normalization & Global Load ---
+        # --- 1. Compute Stats on a SAMPLE to save RAM ---
+        print(">>> [DEBUG] Computing stats on teacher area (subsetting time to save RAM)...")
+        sys.stdout.flush()
+        
         train_slice = slice(None, str(self.hparams.train_end_year))
+        ds_teacher = ds.sel(lat=self.teacher_lat_slice, lon=self.teacher_lon_slice)
         
-        print(">>> [DEBUG] Loading Global SST data into RAM once...")
-        sys.stdout.flush()
-        # Loading everything once is MUCH faster than individual .isel().values calls
-        global_sst = ds["sst"].values.astype(np.float32)
+        # Pull ONLY the teacher training area, not the whole world
+        # This is roughly 1/100th the memory of the global load
+        teacher_train_data = ds_teacher["sst"].sel(time=train_slice).values.astype(np.float32)
         
-        # Identify Teacher indices in the global array
-        lat_mask = (self._lat_values >= self.teacher_lat_slice.start) & (self._lat_values <= self.teacher_lat_slice.stop)
-        lon_mask = (self._lon_values >= self.teacher_lon_slice.start) & (self._lon_values <= self.teacher_lon_slice.stop)
-        
-        # Calculate stats from the pre-loaded global array
-        time_index = ds.get_index("time")
-        train_idx_range = time_index.slice_indexer(train_slice.start, train_slice.stop)
-        
-        teacher_train_area = global_sst[train_idx_range, :, :][:, lat_mask, :][:, :, lon_mask]
-        
-        self.mean = float(np.nanmean(teacher_train_area))
-        self.std = float(np.nanstd(teacher_train_area))
+        self.mean = float(np.nanmean(teacher_train_data))
+        self.std = float(np.nanstd(teacher_train_data))
         if self.std < 1e-8: self.std = 1.0
-            
-        print(f">>> [DATA DEBUG] Stats computed. Mean: {self.mean:.4f}, Std: {self.std:.4f}")
-        sys.stdout.flush()
-
-        # Normalize the ENTIRE global array at once (Vectorized math)
-        global_sst = np.nan_to_num(global_sst, nan=self.mean)
-        global_norm = (global_sst - self.mean) / self.std
-
-        # --- 2. Extract Teacher Patch ---
-        teacher_full = global_norm[:, lat_mask, :][:, :, lon_mask]
-        teacher_norm = teacher_full[:, np.newaxis, :, :]
+        
+        print(f">>> [DATA DEBUG] Stats computed. Mean: {self.mean:.2f}, Std: {self.std:.2f}")
+        
+        # --- 2. Process Teacher Full (Still fits in RAM because it's a small slice) ---
+        teacher_full = ds_teacher["sst"].values.astype(np.float32)
+        teacher_full = np.nan_to_num(teacher_full, nan=self.mean)
+        teacher_norm = (teacher_full - self.mean) / self.std
+        teacher_norm = teacher_norm[:, np.newaxis, :, :]
         th, tw = teacher_norm.shape[2], teacher_norm.shape[3]
 
-        # --- 3. Student Patch Grid Processing (Optimized) ---
+        # --- 3. Process Student Patches ONE-BY-ONE ---
         patch_slices = self._get_patch_slices(self._lat_values, self._lon_values)
         num_patches = len(patch_slices)
-        print(f">>> [DATA DEBUG] Processing {num_patches} patches using Torch interpolation...")
+        print(f">>> [DATA DEBUG] Processing {num_patches} patches...")
         sys.stdout.flush()
         
         student_patches = []
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
         for i, (lat_sli, lon_sli) in enumerate(patch_slices):
-            # No disk read here! Just slicing from RAM
-            sub = global_norm[:, lat_sli, lon_sli]
+            # isel().values here only pulls ONE patch at a time into RAM
+            sub = ds["sst"].isel(lat=lat_sli, lon=lon_sli).values.astype(np.float32)
+            sub = np.nan_to_num(sub, nan=self.mean)
+            sub = (sub - self.mean) / self.std
             
-            # Check if resize is needed
             if sub.shape[1] != th or sub.shape[2] != tw:
-                # FAST TORCH RESIZING
-                # (T, H, W) -> (T, 1, H, W)
+                # Still use Torch for the speed of resizing, but move to CPU immediately after
                 tmp_tensor = torch.from_numpy(sub).unsqueeze(1).to(device)
-                resized = F.interpolate(tmp_tensor, size=(th, tw), mode='bilinear', align_corners=False)
+                resized = F.interpolate(tmp_tensor, size=(th, tw), mode='bilinear')
                 sub = resized.squeeze(1).cpu().numpy()
                 
             student_patches.append(sub[:, np.newaxis, :, :])
             
-            if i % 20 == 0:
-                print(f">>> [DATA DEBUG] Progress: {i}/{num_patches} patches done.")
+            if i % 25 == 0:
+                print(f">>> [DATA DEBUG] Patch {i}/{num_patches} done.")
                 sys.stdout.flush()
 
         print(">>> [DATA DEBUG] Student patches all processed. Creating indices...")
@@ -330,6 +314,7 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
 
