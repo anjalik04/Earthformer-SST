@@ -5,6 +5,10 @@
 #
 # ==============================================================================
 
+import sys
+from unittest.mock import MagicMock
+sys.modules["pkg_resources"] = MagicMock()
+
 import os
 import argparse
 import numpy as np
@@ -15,7 +19,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 import logging
 import xarray as xr
-import sys
 import warnings
 
 # --- Add Repository Root to Python Path ---
