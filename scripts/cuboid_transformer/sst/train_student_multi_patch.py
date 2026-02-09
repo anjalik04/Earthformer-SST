@@ -107,120 +107,149 @@ def get_args_parser():
     return parser
 
 def load_and_prep_multi_patch_data(args, hparams):
-    """
-    Loads and prepares data from ALL specified patches and combines them
-    into a single training and validation set.
-    """
-    logging.info(f"Loading full dataset from: {args.data_path}")
-    ds_full = xr.open_dataset(args.data_path)
+    if args.data_path.endswith('.pt'):
+        logging.info(f"Detected .pt cache. Loading pre-processed data from: {args.data_path}")
+        
+        # Load with weights_only=False to allow numpy arrays within the dict
+        cache = torch.load(args.data_path, map_location="cpu", weights_only=False)
+        
+        # Check if it's the 10-patch stacked format [Patches, Time, C, H, W]
+        data_tensor = cache['all_student_data']
+        if len(data_tensor.shape) == 5:
+            # Flatten patches into sample dimension: [10, 2317, 1, 21, 28] -> [23170, 1, 21, 28]
+            data_tensor = data_tensor.view(-1, *data_tensor.shape[2:])
+        
+        # Create sequences
+        all_x, all_y = create_sequences(data_tensor.numpy(), in_len, out_len)
+        
+        # 90/10 Split
+        split_idx = int(0.9 * len(all_x))
+        train_dataset = TensorDataset(all_x[:split_idx], all_y[:split_idx])
+        val_dataset = TensorDataset(all_x[split_idx:], all_y[split_idx:])
+        
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers)
+        return train_loader, val_loader
 
-    # --- 1. Get Base Patch Stats ---
-    logging.info("Calculating normalization stats from Base Patch...")
-    base_train_slice = slice(None, str(args.train_end_year))
-    train_data_for_stats = ds_full['sst'].sel(
-        time=base_train_slice, lat=args.base_lat_slice, lon=args.base_lon_slice
-    ).values.astype(np.float32)
+    elif args.data_path.endswith('.nc'):
+        logging.info(f"Detected .nc file. Slicing patches on the fly from: {args.data_path}")
+        """
+        Loads and prepares data from ALL specified patches and combines them
+        into a single training and validation set.
+        """
+        logging.info(f"Loading full dataset from: {args.data_path}")
+        ds_full = xr.open_dataset(args.data_path)
     
-    mean_base = np.nanmean(train_data_for_stats)
-    std_base = np.nanstd(train_data_for_stats)
-    logging.info(f"Base Patch Stats: Mean={mean_base:.4f}, Std={std_base:.4f}")
-
-    # --- 2. Define ALL Patches for Training ---
-    # (Base, P0, P1, P2, P3)
-    # --- FIX: Using center_lat/lon to slice by index ---
-    scenarios = [
-        {"name": "Base_Patch", "center_lat": 18.125, "center_lon": 69.0},     # 65.625:72.375
-        {"name": "P0_Shift",   "center_lat": 18.125, "center_lon": 75.75},    # 72.375:79.125
-        {"name": "P1_Shift",   "center_lat": 18.125, "center_lon": 79.125},   # 75.75:82.5
-        {"name": "P2_Shift",   "center_lat": 18.125, "center_lon": 82.5},     # 79.125:85.875
-        {"name": "P3_Shift",   "center_lat": 18.125, "center_lon": 85.875}    # 82.5:89.25
-    ]
-
-    all_train_x, all_train_y = [], []
-    all_val_x, all_val_y = [], []
-
-    in_len = hparams.dataset.in_len
-    out_len = hparams.dataset.out_len
-    val_slice = slice(str(args.train_end_year + 1), str(args.val_end_year))
+        # --- 1. Get Base Patch Stats ---
+        logging.info("Calculating normalization stats from Base Patch...")
+        base_train_slice = slice(None, str(args.train_end_year))
+        train_data_for_stats = ds_full['sst'].sel(
+            time=base_train_slice, lat=args.base_lat_slice, lon=args.base_lon_slice
+        ).values.astype(np.float32)
+        
+        mean_base = np.nanmean(train_data_for_stats)
+        std_base = np.nanstd(train_data_for_stats)
+        logging.info(f"Base Patch Stats: Mean={mean_base:.4f}, Std={std_base:.4f}")
     
-    patch_height, patch_width = 21, 28
-
-    for scenario in scenarios:
-        logging.info(f"Processing patch: {scenario['name']}...")
+        # --- 2. Define ALL Patches for Training ---
+        # (Base, P0, P1, P2, P3)
+        # --- FIX: Using center_lat/lon to slice by index ---
+        scenarios = [
+            {"name": "Base_Patch", "center_lat": 18.125, "center_lon": 69.0},     # 65.625:72.375
+            {"name": "P0_Shift",   "center_lat": 18.125, "center_lon": 75.75},    # 72.375:79.125
+            {"name": "P1_Shift",   "center_lat": 18.125, "center_lon": 79.125},   # 75.75:82.5
+            {"name": "P2_Shift",   "center_lat": 18.125, "center_lon": 82.5},     # 79.125:85.875
+            {"name": "P3_Shift",   "center_lat": 18.125, "center_lon": 85.875}    # 82.5:89.25
+        ]
+    
+        all_train_x, all_train_y = [], []
+        all_val_x, all_val_y = [], []
+    
+        in_len = hparams.dataset.in_len
+        out_len = hparams.dataset.out_len
+        val_slice = slice(str(args.train_end_year + 1), str(args.val_end_year))
         
-        # --- 3. Slice and Normalize Data (Robust Index Slicing) ---
-        center_lat = scenario['center_lat']
-        center_lon = scenario['center_lon']
-        
-        center_lat_idx = np.abs(ds_full.lat.values - center_lat).argmin()
-        center_lon_idx = np.abs(ds_full.lon.values - center_lon).argmin()
-
-        start_lat_idx = center_lat_idx - patch_height // 2
-        end_lat_idx = start_lat_idx + patch_height
-        start_lon_idx = center_lon_idx - patch_width // 2
-        end_lon_idx = start_lon_idx + patch_width
-        
-        if start_lat_idx < 0 or end_lat_idx > len(ds_full.lat) or start_lon_idx < 0 or end_lon_idx > len(ds_full.lon):
-            logging.warning(f"Skipping scenario '{scenario['name']}': patch is too close to the dataset edge.")
-            continue
+        patch_height, patch_width = 21, 28
+    
+        for scenario in scenarios:
+            logging.info(f"Processing patch: {scenario['name']}...")
             
-        ds_patch = ds_full.isel(lat=slice(start_lat_idx, end_lat_idx), 
-                                 lon=slice(start_lon_idx, end_lon_idx))
-        # --- End of Fix ---
-        
-        patch_data_raw = ds_patch['sst'].values.astype(np.float32)
-        patch_time_index = ds_patch.get_index("time")
-        
-        # Verify shape
-        if patch_data_raw.shape[1:] != (patch_height, patch_width):
-             logging.warning(f"Skipping scenario '{scenario['name']}': extracted patch has wrong shape {patch_data_raw.shape[1:]}. Expected {(patch_height, patch_width)}")
-             continue
-
-        patch_data_filled = np.nan_to_num(patch_data_raw, nan=mean_base)
-        patch_data_norm = (patch_data_filled - mean_base) / std_base
-        patch_data_norm = patch_data_norm[:, np.newaxis, :, :] # (T, C, H, W)
-
-        # --- 4. Create Train/Val Splits for this patch ---
-        train_indices = patch_time_index.slice_indexer(base_train_slice.start, base_train_slice.stop)
-        val_indices = patch_time_index.slice_indexer(val_slice.start, val_slice.stop)
-        
-        train_array = patch_data_norm[train_indices]
-        val_array = patch_data_norm[val_indices]
-
-        # --- 5. Create sequences and append to master lists ---
-        train_x, train_y = create_sequences(train_array, in_len, out_len)
-        val_x, val_y = create_sequences(val_array, in_len, out_len)
-        
-        if train_x is not None and val_x is not None:
-            all_train_x.append(train_x)
-            all_train_y.append(train_y)
-            all_val_x.append(val_x)
-            all_val_y.append(val_y)
-            logging.info(f"  ...added {len(train_x)} train seqs, {len(val_x)} val seqs.")
-        else:
-            logging.warning(f"  ...could not create sequences for {scenario['name']}.")
-
-    # --- 6. Concatenate all sequences into giant datasets ---
-    logging.info("Concatenating all patch data...")
-    combined_train_x = torch.cat(all_train_x, dim=0)
-    combined_train_y = torch.cat(all_train_y, dim=0)
-    combined_val_x = torch.cat(all_val_x, dim=0)
-    combined_val_y = torch.cat(all_val_y, dim=0)
-
-    logging.info(f"Total Training Sequences (from {len(all_train_x)} patches): {len(combined_train_x)}")
-    logging.info(f"Total Validation Sequences (from {len(all_val_x)} patches): {len(combined_val_x)}")
+            # --- 3. Slice and Normalize Data (Robust Index Slicing) ---
+            center_lat = scenario['center_lat']
+            center_lon = scenario['center_lon']
+            
+            center_lat_idx = np.abs(ds_full.lat.values - center_lat).argmin()
+            center_lon_idx = np.abs(ds_full.lon.values - center_lon).argmin()
     
-    train_dataset = TensorDataset(combined_train_x, combined_train_y)
-    val_dataset = TensorDataset(combined_val_x, combined_val_y)
+            start_lat_idx = center_lat_idx - patch_height // 2
+            end_lat_idx = start_lat_idx + patch_height
+            start_lon_idx = center_lon_idx - patch_width // 2
+            end_lon_idx = start_lon_idx + patch_width
+            
+            if start_lat_idx < 0 or end_lat_idx > len(ds_full.lat) or start_lon_idx < 0 or end_lon_idx > len(ds_full.lon):
+                logging.warning(f"Skipping scenario '{scenario['name']}': patch is too close to the dataset edge.")
+                continue
+                
+            ds_patch = ds_full.isel(lat=slice(start_lat_idx, end_lat_idx), 
+                                     lon=slice(start_lon_idx, end_lon_idx))
+            # --- End of Fix ---
+            
+            patch_data_raw = ds_patch['sst'].values.astype(np.float32)
+            patch_time_index = ds_patch.get_index("time")
+            
+            # Verify shape
+            if patch_data_raw.shape[1:] != (patch_height, patch_width):
+                 logging.warning(f"Skipping scenario '{scenario['name']}': extracted patch has wrong shape {patch_data_raw.shape[1:]}. Expected {(patch_height, patch_width)}")
+                 continue
     
-    # Create DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
-                              num_workers=args.num_workers, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False,
-                            num_workers=args.num_workers, pin_memory=True)
-                            
-    ds_full.close()
-    return train_loader, val_loader
+            patch_data_filled = np.nan_to_num(patch_data_raw, nan=mean_base)
+            patch_data_norm = (patch_data_filled - mean_base) / std_base
+            patch_data_norm = patch_data_norm[:, np.newaxis, :, :] # (T, C, H, W)
+    
+            # --- 4. Create Train/Val Splits for this patch ---
+            train_indices = patch_time_index.slice_indexer(base_train_slice.start, base_train_slice.stop)
+            val_indices = patch_time_index.slice_indexer(val_slice.start, val_slice.stop)
+            
+            train_array = patch_data_norm[train_indices]
+            val_array = patch_data_norm[val_indices]
+    
+            # --- 5. Create sequences and append to master lists ---
+            train_x, train_y = create_sequences(train_array, in_len, out_len)
+            val_x, val_y = create_sequences(val_array, in_len, out_len)
+            
+            if train_x is not None and val_x is not None:
+                all_train_x.append(train_x)
+                all_train_y.append(train_y)
+                all_val_x.append(val_x)
+                all_val_y.append(val_y)
+                logging.info(f"  ...added {len(train_x)} train seqs, {len(val_x)} val seqs.")
+            else:
+                logging.warning(f"  ...could not create sequences for {scenario['name']}.")
+    
+        # --- 6. Concatenate all sequences into giant datasets ---
+        logging.info("Concatenating all patch data...")
+        combined_train_x = torch.cat(all_train_x, dim=0)
+        combined_train_y = torch.cat(all_train_y, dim=0)
+        combined_val_x = torch.cat(all_val_x, dim=0)
+        combined_val_y = torch.cat(all_val_y, dim=0)
+    
+        logging.info(f"Total Training Sequences (from {len(all_train_x)} patches): {len(combined_train_x)}")
+        logging.info(f"Total Validation Sequences (from {len(all_val_x)} patches): {len(combined_val_x)}")
+        
+        train_dataset = TensorDataset(combined_train_x, combined_train_y)
+        val_dataset = TensorDataset(combined_val_x, combined_val_y)
+        
+        # Create DataLoaders
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
+                                  num_workers=args.num_workers, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False,
+                                num_workers=args.num_workers, pin_memory=True)
+                                
+        ds_full.close()
+        return train_loader, val_loader
+    else:
+        raise ValueError(f"Unsupported file format: {args.data_path}. Must be .nc or .pt")
+
 
 # --- train_one_epoch and validate_one_epoch are UNCHANGED ---
 
