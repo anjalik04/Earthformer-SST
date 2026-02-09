@@ -214,7 +214,7 @@ class ConvLSTM(nn.Module):
         return layer_output_list, last_state_list
 
     def _init_hidden(self, batch_size, image_size):
-        init_states =
+        init_states = []
         for i in range(self.num_layers):
             init_states.append(self.cell_list[i].init_hidden(batch_size, image_size))
         return init_states
