@@ -29,7 +29,7 @@ from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransfor
 
 # Import teacher module to load checkpoint
 from train_cuboid_sst import CuboidSSTPLModule
-from earthformer.model.convlstm import ConvLSTM # Ensure this import path is correct
+from models.convlstm import ConvLSTM # Ensure this import path is correct
 
 # Inside your model initialization block:
 if oc.model.name == "convlstm":
@@ -122,7 +122,23 @@ class CuboidDistillPLModule(pl.LightningModule):
         if hasattr(self.teacher, "checkpoint_level"):
             self.teacher.checkpoint_level = 0
         oc = teacher_pl.oc
-        self.student = build_cuboid_from_oc(oc)
+        if oc.model.get("name", "") == "convlstm":
+            # Initialize ConvLSTM Student
+            self.student = ConvLSTM(
+                input_dim=oc.model.input_shape[1],  # Channels (1)
+                hidden_dim=oc.model.num_hidden,     # [64, 64, 64, 64]
+                kernel_size=(oc.model.kernel_size, oc.model.kernel_size),
+                num_layers=oc.model.num_layers,
+                batch_first=True
+            )
+            # Add a 1x1 Conv head to match the 1-channel output of the teacher
+            self.student_head = torch.nn.Conv2d(
+                in_channels=oc.model.num_hidden[-1], 
+                out_channels=oc.model.input_shape[1], 
+                kernel_size=1
+            )
+        else:
+            self.student = build_cuboid_from_oc(oc)
         self.oc = oc
 
         if not os.path.isabs(self.save_dir):
@@ -136,13 +152,25 @@ class CuboidDistillPLModule(pl.LightningModule):
         self.valid_mae = torchmetrics.MeanAbsoluteError()
 
     def forward(self, x, model, with_features=True):
+        if model == self.student and isinstance(model, ConvLSTM):
+            layer_outputs, _ = model(x)
+            last_layer_out = layer_outputs[-1] 
+            
+            b, t, c, h, w = last_layer_out.shape
+            out = self.student_head(last_layer_out.view(b * t, c, h, w))
+            out = out.view(b, t, 1, h, w)
+            
+            return out, None
+
         if with_features:
-            out, feats = model.forward_with_features(
-                x,
-                enc_block_indices=self.enc_block_indices,
-                return_dec_pre_proj=True,
-            )
-            return out, feats
+            if hasattr(model, "forward_with_features"):
+                out, feats = model.forward_with_features(
+                    x,
+                    enc_block_indices=self.enc_block_indices,
+                    return_dec_pre_proj=True,
+                )
+                return out, feats
+            
         return model(x), None
 
     def feature_loss(self, feats_teacher, feats_student):
