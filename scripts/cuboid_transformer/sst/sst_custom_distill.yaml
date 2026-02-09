@@ -1,3 +1,6 @@
+teacher_ckpt_path: "sst_colab_run_1/checkpoints/last.ckpt"
+teacher_cfg_path: "sst.yaml"
+
 dataset:
   train_start_year: 2001
   train_end_year: 2015
