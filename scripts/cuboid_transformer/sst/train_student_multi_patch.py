@@ -110,22 +110,19 @@ def get_args_parser():
     return parser
 
 def load_and_prep_multi_patch_data(args, hparams):
+    in_len = hparams.dataset.in_len
+    out_len = hparams.dataset.out_len
     if args.data_path.endswith('.pt'):
         logging.info(f"Detected .pt cache. Loading pre-processed data from: {args.data_path}")
         
-        # Load with weights_only=False to allow numpy arrays within the dict
         cache = torch.load(args.data_path, map_location="cpu", weights_only=False)
         
-        # Check if it's the 10-patch stacked format [Patches, Time, C, H, W]
         data_tensor = cache['all_student_data']
         if len(data_tensor.shape) == 5:
-            # Flatten patches into sample dimension: [10, 2317, 1, 21, 28] -> [23170, 1, 21, 28]
             data_tensor = data_tensor.view(-1, *data_tensor.shape[2:])
         
-        # Create sequences
         all_x, all_y = create_sequences(data_tensor.numpy(), in_len, out_len)
         
-        # 90/10 Split
         split_idx = int(0.9 * len(all_x))
         train_dataset = TensorDataset(all_x[:split_idx], all_y[:split_idx])
         val_dataset = TensorDataset(all_x[split_idx:], all_y[split_idx:])
