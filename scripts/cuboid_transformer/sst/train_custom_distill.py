@@ -29,6 +29,21 @@ from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransfor
 
 # Import teacher module to load checkpoint
 from train_cuboid_sst import CuboidSSTPLModule
+from earthformer.model.convlstm import ConvLSTM # Ensure this import path is correct
+
+# Inside your model initialization block:
+if oc.model.name == "convlstm":
+    self.student = ConvLSTM(
+        input_shape=oc.model.input_shape,
+        num_layers=oc.model.num_layers,
+        num_hidden=oc.model.num_hidden,
+        kernel_size=oc.model.kernel_size,
+        stride=oc.model.stride,
+        padding=oc.model.padding
+    )
+else:
+    # Default back to Cuboid Transformer
+    self.student = CuboidTransformerModel(**oc.model)
 
 _curr_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)))
 exps_dir = os.path.join(_curr_dir, "experiments")
