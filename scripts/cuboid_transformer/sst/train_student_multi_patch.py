@@ -372,7 +372,7 @@ def main(args):
         exit(1)
         
     # --- 2. Setup Data ---
-    train_loader, val_loader = load_and_prep_multi_patch_data(args, hparams)
+    train_loader, val_loader, test_loader = load_and_prep_multi_patch_data(args, hparams)
     
     logging.info(f"Combined DataLoaders created. Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
     if len(train_loader) == 0:
@@ -381,6 +381,8 @@ def main(args):
 
     total_samples = len(train_loader.dataset) + len(val_loader.dataset)
     # Samples per patch = Total Timesteps (2317) - Window Size (24) + 1 = 2294
+    if test_loader is not None:
+        total_samples += len(test_loader.dataset)
     samples_per_patch = 2294 
     num_patches = round(total_samples / samples_per_patch)
     
@@ -429,6 +431,15 @@ def main(args):
     logging.info("--- Generalized Student Training Finished ---")
     logging.info(f"Best validation loss: {best_val_loss:.6f}")
     logging.info(f"Trained generalized student model saved to: {os.path.join(args.student_save_dir, 'best_generalized_student.pth')}")
+
+    if test_loader is not None:
+        logging.info("--- Running Final Evaluation on Test Set ---")
+        # Load the best model first
+        best_path = os.path.join(args.student_save_dir, 'best_generalized_student.pth')
+        student_model.load_state_dict(torch.load(best_path, map_location=device))
+        
+        test_loss = validate_one_epoch(teacher_model, student_model, test_loader, criterion, device)
+        logging.info(f"Final Test Loss: {test_loss:.6f}")
 
 if __name__ == "__main__":
     parser = get_args_parser()
