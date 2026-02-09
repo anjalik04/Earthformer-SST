@@ -1,25 +1,27 @@
-teacher_ckpt_path: "sst_colab_run_1/checkpoints/last.ckpt"
-teacher_cfg_path: "sst.yaml"
-
 dataset:
   train_start_year: 2001
   train_end_year: 2015
-  test_year: 2016  # Use 2016 for testing
-  in_len: 12          # Must match your Teacher Checkpoint
-  out_len: 12           # Must match your Teacher Checkpoint
-  batch_size: 4       # Since we only have 10 patches, keep batch size small
+  test_year: 2016
+  in_len: 12
+  out_len: 12
+  batch_size: 4
   num_workers: 4
 
 model:
-  input_shape: [12, 21, 28, 1]
-  target_shape: [12, 21, 28, 1]
-  # ... Copy the rest of the model architecture from your sst_distill_earthformer.yaml ...
+  name: "convlstm"
+  input_shape: [12, 1, 128, 128]
+  target_shape: [12, 1, 128, 128]
+  num_layers: 4
+  num_hidden: [64, 64, 64, 64]
+  kernel_size: 3
+  stride: 1
+  padding: 1
 
 trainer:
   check_val_every_n_epoch: 1
   precision: 16
-  max_epochs: 50
-  acceleratory: "gpu"
+  max_epochs: 50 
+  accelerator: "gpu"
   devices: 1
 
 optim:
@@ -27,7 +29,6 @@ optim:
   max_epochs: 100
   lr: 0.001
   warmup_percentage: 0.1
-  # Since dataset is small, we want to save checkpoints often
   save_top_k: 3
 
 distill:
