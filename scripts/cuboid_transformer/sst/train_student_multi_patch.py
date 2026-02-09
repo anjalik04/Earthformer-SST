@@ -357,6 +357,11 @@ def main(args):
         logging.error("Training DataLoader is empty. Check data paths and split years.")
         exit(1)
 
+    total_samples = len(train_loader.dataset) + len(val_loader.dataset)
+    # Samples per patch = Total Timesteps (2317) - Window Size (24) + 1 = 2294
+    samples_per_patch = 2294 
+    num_patches = round(total_samples / samples_per_patch)
+    
     # --- 3. Initialize Student Model (ConvLSTM) ---
     student_model = ConvLSTMStudent(
         input_dim=1,
@@ -385,7 +390,7 @@ def main(args):
     best_val_loss = float('inf')
     os.makedirs(args.student_save_dir, exist_ok=True)
     
-    logging.info("--- Starting GENERALIZED Student Training (on 5 patches) ---")
+    logging.info(f"--- Starting GENERALIZED Student Training (on {num_patches} patches) ---")
     for epoch in range(args.epochs):
         train_loss = train_one_epoch(teacher_model, student_model, train_loader, optimizer, criterion, device)
         val_loss = validate_one_epoch(teacher_model, student_model, val_loader, criterion, device)
