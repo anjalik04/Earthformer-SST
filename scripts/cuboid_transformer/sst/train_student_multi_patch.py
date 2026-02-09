@@ -20,6 +20,7 @@ from tqdm import tqdm
 import logging
 import xarray as xr
 import warnings
+import pandas as pd
 
 # --- Add Repository Root to Python Path ---
 # This finds the 'src' folder by going up 3 levels
@@ -352,6 +353,9 @@ def main(args):
     device = torch.device(args.device)
     logging.info(f"Using device: {device}")
 
+    history = []
+    metrics_path = os.path.join(args.student_save_dir, 'metrics.csv')
+
     # --- 1. Load & Freeze Teacher Model (Earthformer) ---
     logging.info(f"Loading Teacher model from checkpoint: {args.teacher_ckpt_path}")
     try:
@@ -418,7 +422,14 @@ def main(args):
     for epoch in range(args.epochs):
         train_loss = train_one_epoch(teacher_model, student_model, train_loader, optimizer, criterion, device)
         val_loss = validate_one_epoch(teacher_model, student_model, val_loader, criterion, device)
-        
+        current_lr = optimizer.param_groups[0]['lr']
+        history.append({
+            'epoch': epoch + 1,
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'lr': current_lr
+        })
+        pd.DataFrame(history).to_csv(metrics_path, index=False)
         logging.info(f"Epoch {epoch+1}/{args.epochs} | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
         
         if val_loss < best_val_loss:
