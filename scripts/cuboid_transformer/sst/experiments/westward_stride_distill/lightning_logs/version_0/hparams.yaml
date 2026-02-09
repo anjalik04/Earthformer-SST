@@ -1,0 +1,15 @@
+data_root: placeholder
+in_len: 12
+out_len: 12
+batch_size: 4
+num_workers: 4
+train_start_year: 2001
+train_end_year: 2015
+test_year: 2016
+patch_lat_deg: 5.0
+patch_lon_deg: 6.75
+stride_lat_deg: 5.0
+stride_lon_deg: 6.75
+student_lat_range: null
+student_lon_range: null
+filename: sst.week.mean.nc
