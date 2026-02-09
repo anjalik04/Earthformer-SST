@@ -118,19 +118,41 @@ def load_and_prep_multi_patch_data(args, hparams):
         cache = torch.load(args.data_path, map_location="cpu", weights_only=False)
         
         data_tensor = cache['all_student_data']
-        if len(data_tensor.shape) == 5:
-            data_tensor = data_tensor.view(-1, *data_tensor.shape[2:])
-        
-        all_x, all_y = create_sequences(data_tensor.numpy(), in_len, out_len)
-        
-        split_idx = int(0.9 * len(all_x))
-        train_dataset = TensorDataset(all_x[:split_idx], all_y[:split_idx])
-        val_dataset = TensorDataset(all_x[split_idx:], all_y[split_idx:])
-        
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=args.num_workers)
-        return train_loader, val_loader
+        time_index = cache['time_index']
+        rain_mask = (time_index.year <= args.train_end_year)
+        val_mask = (time_index.year == (args.train_end_year + 1))
+        test_mask = (time_index.year > (args.train_end_year + 1))
 
+        def slice_and_flatten(mask):
+            if not any(mask): return None
+            sliced = data_tensor[:, mask]
+            return sliced.reshape(-1, *sliced.shape[2:])
+
+        train_raw = slice_and_flatten(train_mask)
+        val_raw = slice_and_flatten(val_mask)
+        test_raw = slice_and_flatten(test_mask)
+    
+        # 3. Create Sequences
+        all_x_train, all_y_train = create_sequences(train_raw.numpy(), in_len, out_len)
+        all_x_val, all_y_val = create_sequences(val_raw.numpy(), in_len, out_len)
+        
+        # Handle the Test set carefully in case it's empty
+        if test_raw is not None:
+            all_x_test, all_y_test = create_sequences(test_raw.numpy(), in_len, out_len)
+        else:
+            all_x_test, all_y_test = None, None
+        
+        train_loader = DataLoader(TensorDataset(all_x_train, all_y_train), batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        val_loader = DataLoader(TensorDataset(all_x_val, all_y_val), batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+        test_loader = None
+        if all_x_test is not None:
+            test_loader = DataLoader(TensorDataset(all_x_test, all_y_test), 
+                                     batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+            logging.info(f"Test Loader created with {len(test_loader)} batches.")
+        else:
+            logging.info("Test set is empty for the current date range.")
+    
+        return train_loader, val_loader, test_loader
     elif args.data_path.endswith('.nc'):
         logging.info(f"Detected .nc file. Slicing patches on the fly from: {args.data_path}")
         """
