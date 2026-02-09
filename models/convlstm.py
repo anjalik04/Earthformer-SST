@@ -147,7 +147,7 @@ class ConvLSTM(nn.Module):
         self.bias = bias
         self.return_all_layers = return_all_layers
 
-        cell_list =
+        cell_list = []
         for i in range(0, self.num_layers):
             cur_input_dim = input_dim if i == 0 else self.hidden_dim[i - 1]
 
@@ -185,14 +185,14 @@ class ConvLSTM(nn.Module):
         if hidden_state is None:
             hidden_state = self._init_hidden(batch_size=b, image_size=(h, w))
 
-        layer_output_list =
-        last_state_list =
+        layer_output_list = []
+        last_state_list = []
 
         cur_layer_input = input_tensor
         
         for layer_idx in range(self.num_layers):
             h, c = hidden_state[layer_idx]
-            output_inner =
+            output_inner = []
             
             # Iterate over time dimension
             for t in range(seq_len):
