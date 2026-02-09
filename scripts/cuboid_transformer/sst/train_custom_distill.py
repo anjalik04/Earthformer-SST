@@ -26,6 +26,7 @@ from src.earthformer.datasets.sst.sst_custom_loader import SSTPatchDataModule
 from src.earthformer.utils.optim import SequentialLR, warmup_lambda
 from src.earthformer.utils.utils import get_parameter_names
 from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransformerModel
+sys.path.append("/kaggle/working/Earthformer-SST")
 
 # Import teacher module to load checkpoint
 from train_cuboid_sst import CuboidSSTPLModule
@@ -122,6 +123,7 @@ class CuboidDistillPLModule(pl.LightningModule):
         if hasattr(self.teacher, "checkpoint_level"):
             self.teacher.checkpoint_level = 0
         oc = teacher_pl.oc
+        self.oc = oc
         if oc.model.get("name", "") == "convlstm":
             # Initialize ConvLSTM Student
             self.student = ConvLSTM(
