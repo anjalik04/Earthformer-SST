@@ -119,7 +119,7 @@ def load_and_prep_multi_patch_data(args, hparams):
         
         data_tensor = cache['all_student_data']
         time_index = cache['time_index']
-        rain_mask = (time_index.year <= args.train_end_year)
+        train_mask = (time_index.year <= args.train_end_year)
         val_mask = (time_index.year == (args.train_end_year + 1))
         test_mask = (time_index.year > (args.train_end_year + 1))
 
