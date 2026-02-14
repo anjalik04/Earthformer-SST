@@ -10,6 +10,7 @@ dataset:
   _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
   data_root: "/kaggle/working/data"
   filename: "sst.week.mean.nc"
+  use_cache: false
   in_len: 12
   out_len: 12
   batch_size: 4
@@ -59,3 +60,4 @@ trainer:
   precision: "16-mixed"
 
 seed: 2022
+
