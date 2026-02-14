@@ -86,8 +86,9 @@ class SSTPatchDataModule(pl.LightningDataModule):
         out_len: int = 12,
         batch_size: int = 8,
         num_workers: int = 4,
+        train_start_year = 2001,
         train_end_year: int = 2015,
-        val_end_year: int = 2020,
+        val_end_year: int = 2016,
         teacher_lat_slice: Optional[slice] = None,
         teacher_lon_slice: Optional[slice] = None,
         patch_lat_deg: float = 5.0,
@@ -112,6 +113,10 @@ class SSTPatchDataModule(pl.LightningDataModule):
             stride_lat_deg = patch_lat_deg
         if stride_lon_deg is None:
             stride_lon_deg = patch_lon_deg
+        self.data_root = data_root
+        self.train_start_year = train_start_year
+        self.train_end_year = train_end_year
+        self.val_end_year = val_end_year
         self.save_hyperparameters(ignore=["teacher_lat_slice", "teacher_lon_slice"])
         self.teacher_lat_slice = teacher_lat_slice
         self.teacher_lon_slice = teacher_lon_slice
@@ -251,9 +256,11 @@ class SSTPatchDataModule(pl.LightningDataModule):
             ds.close()
 
         # 3. Time Splitting Logic
-        train_slice = slice(None, str(self.hparams.train_end_year))
-        val_slice = slice(str(self.hparams.train_end_year + 1), str(self.hparams.val_end_year))
-        test_slice = slice(str(self.hparams.val_end_year + 1), None)
+        train_slice = slice(str(self.train_start_year), str(self.hparams.train_end_year))
+        val_start = self.hparams.train_end_year + 1
+        val_slice = slice(str(val_start), str(self.hparams.val_end_year))
+        test_start = self.hparams.val_end_year + 1
+        test_slice = slice(str(test_start), None)
 
         train_idx = time_index.slice_indexer(train_slice.start, train_slice.stop)
         val_idx = time_index.slice_indexer(val_slice.start, val_slice.stop)
@@ -351,5 +358,6 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
 
 
