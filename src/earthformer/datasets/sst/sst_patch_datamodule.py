@@ -12,6 +12,7 @@ import torch
 import xarray as xr
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
+import torch.nn.functional as F
 
 
 def _parse_slice(s: slice) -> Tuple[float, float]:
@@ -95,7 +96,12 @@ class SSTPatchDataModule(pl.LightningDataModule):
         stride_lon_deg: Optional[float] = None,
         student_lat_range: Optional[Tuple[float, float]] = None,
         student_lon_range: Optional[Tuple[float, float]] = None,
+        student_stride_south: bool = False,
+        student_stride_lat_fraction: float = 0.30,
+        student_num_stride_patches: int = 10,
         filename: str = "sst.week.mean.nc",
+        use_cache: bool = True,
+        cache_path: str = "/kaggle/input/teacher-student-sst-dataset/thermodistill_cache.pt"
     ):
         super().__init__()
         if teacher_lat_slice is None:
@@ -109,6 +115,8 @@ class SSTPatchDataModule(pl.LightningDataModule):
         self.save_hyperparameters(ignore=["teacher_lat_slice", "teacher_lon_slice"])
         self.teacher_lat_slice = teacher_lat_slice
         self.teacher_lon_slice = teacher_lon_slice
+        self.use_cache = use_cache
+        self.cache_path = cache_path
 
         self.mean = None
         self.std = None
@@ -126,21 +134,42 @@ class SSTPatchDataModule(pl.LightningDataModule):
         lat_values: np.ndarray,
         lon_values: np.ndarray,
     ) -> List[Tuple[slice, slice]]:
-        """Build list of (lat_slice, lon_slice) for student grid in index space."""
-        lat_min, lat_max = float(lat_values.min()), float(lat_values.max())
-        lon_min, lon_max = float(lon_values.min()), float(lon_values.max())
+        """Build list of (lat_slice, lon_slice) for student patches in index space.
+        If student_stride_south is True: N patches striding south by (student_stride_lat_fraction * patch_lat_deg).
+        Otherwise: 2D grid with stride_lat_deg / stride_lon_deg.
+        """
         p_lat = self.hparams.patch_lat_deg
         p_lon = self.hparams.patch_lon_deg
+
+        if getattr(self.hparams, "student_stride_south", False):
+            stride_deg = self.hparams.student_stride_lat_fraction * p_lat
+            n_patches = getattr(self.hparams, "student_num_stride_patches", 10)
+            t_lat_start = getattr(self.teacher_lat_slice, "start", 15.625)
+            t_lat_stop = getattr(self.teacher_lat_slice, "stop", 20.625)
+            t_lon_start = getattr(self.teacher_lon_slice, "start", 65.625)
+            t_lon_stop = getattr(self.teacher_lon_slice, "stop", 72.375)
+            slices = []
+            for i in range(n_patches):
+                lat_start = t_lat_start - i * stride_deg
+                lat_stop = t_lat_stop - i * stride_deg
+                lat_sel = (lat_values >= lat_start) & (lat_values < lat_stop)
+                lon_sel = (lon_values >= t_lon_start) & (lon_values < t_lon_stop)
+                if np.any(lat_sel) and np.any(lon_sel):
+                    lat_idx = np.where(lat_sel)[0]
+                    lon_idx = np.where(lon_sel)[0]
+                    slices.append((slice(int(lat_idx[0]), int(lat_idx[-1]) + 1), slice(int(lon_idx[0]), int(lon_idx[-1]) + 1)))
+            return slices
+
+        lat_min, lat_max = float(lat_values.min()), float(lat_values.max())
+        lon_min, lon_max = float(lon_values.min()), float(lon_values.max())
         s_lat = self.hparams.stride_lat_deg
         s_lon = self.hparams.stride_lon_deg
-
         if self.hparams.student_lat_range is not None:
             lat_min = max(lat_min, self.hparams.student_lat_range[0])
             lat_max = min(lat_max, self.hparams.student_lat_range[1])
         if self.hparams.student_lon_range is not None:
             lon_min = max(lon_min, self.hparams.student_lon_range[0])
             lon_max = min(lon_max, self.hparams.student_lon_range[1])
-
         slices = []
         lat_start = lat_min
         while lat_start + p_lat <= lat_max + 1e-6:
@@ -157,27 +186,69 @@ class SSTPatchDataModule(pl.LightningDataModule):
         return slices
 
     def setup(self, stage: Optional[str] = None) -> None:
-        import torch
-        # 1. Load the preprocessed file from your uploaded dataset path
-        # Replace 'your-dataset-name' with the actual name Kaggle gave your upload
-        cache_path = "/kaggle/input/teacher-student-sst-dataset/thermodistill_cache.pt"
-        
-        print(f">>> [LOADER] Loading preprocessed data from {cache_path}")
-        # weights_only=False is required because of the NumPy/Pandas objects
-        data = torch.load(cache_path, map_location="cpu", weights_only=False)
-        
-        self.mean = data['mean']
-        self.std = data['std']
-        time_index = data['time_index']
-        
-        # 2. Convert half-precision to float32 for training
-        # Teacher: (T, C, H, W) -> float32
-        teacher_norm = torch.from_numpy(data['teacher_norm']).to(torch.float32)
-        # Student: (N_patches, T, C, H, W) -> float32
-        if isinstance(data['all_student_data'], np.ndarray):
-            all_student_data = torch.from_numpy(data['all_student_data']).to(torch.float32)
+        # 1. Attempt to use cached data for speed if requested and available
+        if self.use_cache and os.path.exists(self.cache_path):
+            print(f">>> [LOADER] Using Cached Data from {self.cache_path}")
+            # weights_only=False is required because of the NumPy/Pandas objects
+            data = torch.load(self.cache_path, map_location="cpu", weights_only=False)
+            
+            self.mean = data['mean']
+            self.std = data['std']
+            time_index = data['time_index']
+            
+            # Convert half-precision to float32 for training
+            teacher_norm = torch.from_numpy(data['teacher_norm']).to(torch.float32)
+            if isinstance(data['all_student_data'], np.ndarray):
+                all_student_data = torch.from_numpy(data['all_student_data']).to(torch.float32)
+            else:
+                all_student_data = data['all_student_data'].to(torch.float32)
+            
+            n_patches = all_student_data.shape[0]
+            student_patches = [all_student_data[i] for i in range(n_patches)]
+            patch_ids = list(range(n_patches))
         else:
-            all_student_data = data['all_student_data'].to(torch.float32)
+            # 2. Fallback to raw processing if cache is missing or disabled
+            print(f">>> [LOADER] Processing Raw NetCDF from {self.hparams.data_root}")
+            file_path = os.path.join(self.hparams.data_root, self.hparams.filename)
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Dataset file not found at {file_path}")
+
+            ds = xr.open_dataset(file_path)
+            self._lat_values = ds.lat.values
+            self._lon_values = ds.lon.values
+
+            train_slice = slice(None, str(self.hparams.train_end_year))
+            ds_teacher = ds.sel(
+                lat=self.teacher_lat_slice,
+                lon=self.teacher_lon_slice,
+            )
+            train_teacher = ds_teacher["sst"].sel(time=train_slice).values.astype(np.float32)
+            self.mean = float(np.nanmean(train_teacher))
+            self.std = float(np.nanstd(train_teacher))
+            if self.std < 1e-8:
+                self.std = 1.0
+
+            teacher_full = ds_teacher["sst"].values.astype(np.float32)
+            teacher_full = np.nan_to_num(teacher_full, nan=self.mean)
+            teacher_norm = (teacher_full - self.mean) / self.std
+            teacher_norm = torch.from_numpy(teacher_norm[:, np.newaxis, :, :])
+
+            patch_slices = self._get_patch_slices(self._lat_values, self._lon_values)
+            student_patches = []
+            th, tw = teacher_norm.shape[2], teacher_norm.shape[3]
+            for (lat_sli, lon_sli) in patch_slices:
+                sub = ds["sst"].isel(lat=lat_sli, lon=lon_sli).values.astype(np.float32)
+                sub = np.nan_to_num(sub, nan=self.mean)
+                sub = (sub - self.mean) / self.std
+                # Resize to teacher patch grid if needed
+                if sub.shape[1] != th or sub.shape[2] != tw:
+                    sub = _resize_to_match(sub, th, tw)
+                sub = torch.from_numpy(sub[:, np.newaxis, :, :])
+                student_patches.append(sub)
+
+            patch_ids = list(range(len(student_patches)))
+            time_index = ds.get_index("time")
+            ds.close()
 
         # 3. Time Splitting Logic
         train_slice = slice(None, str(self.hparams.train_end_year))
@@ -190,15 +261,13 @@ class SSTPatchDataModule(pl.LightningDataModule):
 
         # 4. Helper to create Dataset instances
         def make_dataset(t_idx):
-            # Extract the correct time steps for all patches at once
             t_teacher = teacher_norm[t_idx]
-            # Slicing the student tensor: [All Patches, Time Subset, C, H, W]
-            t_students = [all_student_data[i][t_idx] for i in range(all_student_data.shape[0])]
+            t_students = [p[t_idx] for p in student_patches]
             
             return SSTPatchDataset(
-                teacher_data=t_teacher.numpy(), # Dataset expects numpy arrays
-                student_patches=[p.numpy() for p in t_students],
-                patch_ids=list(range(len(t_students))),
+                teacher_data=t_teacher.numpy() if isinstance(t_teacher, torch.Tensor) else t_teacher,
+                student_patches=[p.numpy() if isinstance(p, torch.Tensor) else p for p in t_students],
+                patch_ids=patch_ids,
                 in_len=self.hparams.in_len,
                 out_len=self.hparams.out_len,
             )
@@ -246,7 +315,6 @@ class SSTPatchDataModule(pl.LightningDataModule):
 
 def _resize_to_match(arr: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     """Resize (T, H, W) to (T, target_h, target_w) via simple repeat/mean."""
-    import numpy as np
     t, h, w = arr.shape
     if h == target_h and w == target_w:
         return arr
@@ -257,36 +325,7 @@ def _resize_to_match(arr: np.ndarray, target_h: int, target_w: int) -> np.ndarra
 
 
 def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
-    # """Resize 2D array to target size using numpy (nearest-style block reduce/sum then scale)."""
-    # h, w = x.shape
-    # if h == target_h and w == target_w:
-    #     return x
-    # scale_h = h / target_h
-    # scale_w = w / target_w
-    # out = np.zeros((target_h, target_w), dtype=x.dtype)
-    # for i in range(target_h):
-    #     for j in range(target_w):
-    #         i0 = int(i * scale_h)
-    #         i1 = min(int((i + 1) * scale_h), h)
-    #         j0 = int(j * scale_w)
-    #         j1 = min(int((j + 1) * scale_w), w)
-    #         out[i, j] = np.nanmean(x[i0:i1, j0:j1])
-    # return out
-    import torch
-    import torch.nn.functional as F
+    """Resize 2D array to target size using bilinear interpolation via torch."""
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
-
-
-
-
-
-
-
-
-
-
-
-
-
