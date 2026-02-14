@@ -174,6 +174,15 @@ def run_evaluation_for_patch(
             input_seq_teacher = x_batch.permute(0, 1, 3, 4, 2) # (B, T, H, W, C)
             teacher_output_permuted = teacher_model(input_seq_teacher) # (B, 12, H, W, 1)
             teacher_output = teacher_output_permuted.permute(0, 1, 4, 2, 3) # (B, 12, 1, H, W)
+
+            if student_type == "convlstm":
+                student_input = teacher_output_permuted.permute(0, 1, 4, 2, 3) 
+                student_pred_norm = student_model(student_input[:, 0:1, ...])
+            else:
+                student_input = teacher_output_permuted[:, 0:1, ...] 
+                student_pred_norm_permuted = student_model(student_input)
+                # Permute back to (B, T, C, H, W) for the mean calculation logic below
+                student_pred_norm = student_pred_norm_permuted.permute(0, 1, 4, 2, 3)
             
             teacher_pred_step1 = teacher_output[:, 0:1, :, :, :]
             
@@ -287,10 +296,26 @@ def main():
     # --- 2. LOAD TRAINED GENERALIZED STUDENT MODEL ---
     logging.info(f"Loading Student model from checkpoint: {args.student_ckpt_path}")
     try:
-        student_model = ConvLSTMStudent(
-            input_dim=1, hidden_dim=12, kernel_size=(3, 3), num_layers=2
-        ).to(device)
-        student_model.load_state_dict(torch.load(args.student_ckpt_path, map_location=device))
+        if args.student_ckpt_path.endswith('.pth'):
+            # It's your manual ConvLSTM
+            student_model = ConvLSTMStudent(
+                input_dim=1, hidden_dim=12, kernel_size=(3, 3), num_layers=2
+            ).to(device)
+            student_model.load_state_dict(torch.load(args.student_ckpt_path, map_location=device))
+            student_type = "convlstm"
+        else:
+            # It's an Earthformer Student (Lightning Checkpoint)
+            student_pl = CuboidSSTPLModule.load_from_checkpoint(
+                args.student_ckpt_path,
+                oc_file=args.cfg,
+                save_dir=os.path.dirname(args.student_ckpt_path)
+            )
+            student_model = student_pl.torch_nn_module.to(device)
+            student_type = "earthformer"
+        # student_model = ConvLSTMStudent(
+        #     input_dim=1, hidden_dim=12, kernel_size=(3, 3), num_layers=2
+        # ).to(device)
+        # student_model.load_state_dict(torch.load(args.student_ckpt_path, map_location=device))
         student_model.eval()
         for param in student_model.parameters():
             param.requires_grad = False
@@ -343,6 +368,7 @@ def main():
     for scenario in scenarios:
         run_evaluation_for_patch(
             teacher_model=teacher_model,
+            student_type = student_type,
             student_model=student_model,
             ds_full=ds_full,
             hparams=hparams,
