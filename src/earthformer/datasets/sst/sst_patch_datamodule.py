@@ -283,6 +283,28 @@ class SSTPatchDataModule(pl.LightningDataModule):
                 return idx.stop - idx.start
             return len(idx)
 
+        train_ds = dm.train_dataset
+        val_ds = dm.val_dataset
+        
+        print("--- GEOSPATIAL PATCH DETAILS ---")
+        print(f"Total Student Patches: {train_ds.n_patches}")
+        print(f"Time Steps (Train): {len(train_ds) // train_ds.n_patches} weeks")
+        print(f"Time Steps (Val):   {len(val_ds) // val_ds.n_patches} weeks")
+        
+        if hasattr(dm, '_lat_values') and dm._lat_values is not None:
+            patch_slices = dm._get_patch_slices(dm._lat_values, dm._lon_values)
+            for i, (lat_slice, lon_slice) in enumerate(patch_slices):
+                lats = dm._lat_values[lat_slice]
+                lons = dm._lon_values[lon_slice]
+                print(f"Patch {i:02d}: Lat [{lats.min():.3f} to {lats.max():.3f}], "
+                      f"Lon [{lons.min():.3f} to {lons.max():.3f}]")
+        
+        tx, ty, sx, sy, pid = train_ds[0]
+        print("\n--- TENSOR DIMENSIONS ---")
+        print(f"Input Sequence (X):  {sx.shape}  # (Time, Channel, Height, Width)")
+        print(f"Target Sequence (Y): {sy.shape}")
+        print(f"Pixel Range (Mean):  {sx.mean():.4f}")
+
         print(f">>> [LOADER] Setup complete. Train: {get_idx_len(train_idx)} weeks, Val: {get_idx_len(val_idx)} weeks")
 
     def train_dataloader(self) -> DataLoader:
@@ -329,3 +351,4 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     tensor_x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)
     resized = F.interpolate(tensor_x, size=(target_h, target_w), mode='bilinear', align_corners=False)
     return resized.squeeze().numpy()
+
