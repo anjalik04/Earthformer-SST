@@ -103,8 +103,6 @@ class CuboidDistillPLModule(pl.LightningModule):
         for p in self.teacher.parameters():
             p.requires_grad = False
         self.teacher.eval()
-        if hasattr(self.teacher, "checkpoint_level"):
-            self.teacher.checkpoint_level = 0
         oc = teacher_pl.oc
         self.student = build_cuboid_from_oc(oc)
         self.oc = oc
@@ -305,7 +303,7 @@ def main():
         max_epochs=optim_cfg["max_epochs"],
         check_val_every_n_epoch=oc.trainer.get("check_val_every_n_epoch", 1),
         gradient_clip_val=optim_cfg.get("gradient_clip_val", 1.0),
-        precision=16,
+        precision=oc.trainer.get("precision", "16-mixed"),
         accumulate_grad_batches=accumulate,
         default_root_dir=pl_module.save_dir,
         callbacks=callbacks,
@@ -324,12 +322,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
