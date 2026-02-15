@@ -165,53 +165,80 @@ def run_evaluation_for_patch(teacher_model, student_model, ds_full, hparams, mea
                     y_ticks, lat_range, lon_range)
 
 def main():
-    # Use your existing argparse logic here (omitted for brevity)
-    # ... assuming args are parsed ...
-    
-    # Generate patches exactly like Earthformer script
+    parser = get_args_parser()
+    args = parser.parse_args()
+    device = torch.device(args.device)
+    os.makedirs(args.plot_save_dir, exist_ok=True)
+
+    # 1. Load Teacher & Student (Existing Logic)
+    pl_module = CuboidSSTPLModule.load_from_checkpoint(args.teacher_ckpt_path, oc_file=args.cfg, save_dir=args.plot_save_dir)
+    teacher_model = pl_module.torch_nn_module.to(device).eval()
+    hparams = pl_module.hparams
+
+    if args.student_ckpt_path.endswith('.pth'):
+        student_model = ConvLSTMStudent(input_dim=1, hidden_dim=12, kernel_size=(3, 3), num_layers=2).to(device)
+        student_model.load_state_dict(torch.load(args.student_ckpt_path, map_location=device))
+    else:
+        student_pl = CuboidSSTPLModule.load_from_checkpoint(args.student_ckpt_path, oc_file=args.cfg)
+        student_model = student_pl.torch_nn_module.to(device)
+    student_model.eval()
+
+    # 2. Load Dataset & Stats (Existing Logic)
+    ds_full = xr.open_dataset(args.data_path)
+    train_stats = ds_full['sst'].sel(time=slice(None, str(args.train_end_year)), 
+                                     lat=args.base_lat_slice, 
+                                     lon=args.base_lon_slice).values
+    mean_original = np.nanmean(train_stats)
+    std_original = np.nanstd(train_stats)
+
+    # --- THE FIX: CALL THE FUNCTIONS TO DEFINE THE LISTS ---
     scenarios = []
-    south_patches = compute_southward_patches()
-for name, lat_rng, lon_rng in south_patches:
-    scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
-
-# Westward Patches
-west_patches = compute_westward_patches()
-for name, lat_rng, lon_rng in west_patches:
-    scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
-
-# Random Patches
-random_results = compute_random_patches(ds_full, seed=42)
-for name, lat_rng, lon_rng in random_results:
-    scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
-
-# --- Execution with Console Printing ---
-print(f"\n{'='*60}")
-print(f"STARTING GENERALIZED CONVLSTM INFERENCE")
-print(f"{'='*60}")
-
-for scenario in scenarios:
-    name = scenario["name"]
-    la = scenario["lat"]
-    lo = scenario["lon"]
     
-    # This prints the range to the console before running the specific patch
-    print(f"\nTesting patch: {name}")
-    print(f"  Latitude:  {la[0]:.3f} to {la[1]:.3f}")
-    print(f"  Longitude: {lo[0]:.3f} to {lo[1]:.3f}")
-    
-    run_evaluation_for_patch(
-        teacher_model=teacher_model, 
-        student_model=student_model, 
-        ds_full=ds_full, 
-        hparams=hparams, 
-        mean_orig=mean_original, 
-        std_orig=std_original, 
-        lat_range=la, 
-        lon_range=lo, 
-        scenario_name=name, 
-        plot_save_dir=args.plot_save_dir, 
-        device=device
-    )
+    # Call the functions defined earlier in your script
+    south_patches = compute_southward_patches() 
+    west_patches = compute_westward_patches()
+    random_patches = compute_random_patches(ds_full, seed=42)
+
+    # Add them to the master scenarios list
+    for name, lat_rng, lon_rng in south_patches:
+        scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
+
+    for name, lat_rng, lon_rng in west_patches:
+        scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
+
+    for name, lat_rng, lon_rng in random_patches:
+        scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
+
+    # 3. Execution Loop with Printing
+    print(f"\n{'='*60}")
+    print(f"STARTING GENERALIZED CONVLSTM INFERENCE")
+    print(f"{'='*60}")
+
+    for s in scenarios:
+        # Print ranges to console as requested
+        print(f"\nTesting patch: {s['name']}")
+        print(f"  Latitude:  {s['lat'][0]:.3f} to {s['lat'][1]:.3f}")
+        print(f"  Longitude: {s['lon'][0]:.3f} to {s['lon'][1]:.3f}")
+        
+        run_evaluation_for_patch(
+            teacher_model=teacher_model, 
+            student_model=student_model, 
+            ds_full=ds_full, 
+            hparams=hparams, 
+            mean_orig=mean_original, 
+            std_orig=std_original, 
+            lat_range=s['lat'], 
+            lon_range=s['lon'], 
+            scenario_name=s['name'], 
+            plot_save_dir=args.plot_save_dir, 
+            device=device
+        )
+
+    ds_full.close()
+    logging.info("Evaluation complete.")
+
+if __name__ == '__main__':
+    main()
 
 if __name__ == '__main__':
     # Add your argparse and initialization here
