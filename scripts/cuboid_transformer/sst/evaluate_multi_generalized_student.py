@@ -1,10 +1,9 @@
 # ==============================================================================
-# SCRIPT FOR EVALUATING THE *GENERALIZED* (TEACHER + STUDENT) MODEL
+# SCRIPT FOR EVALUATING THE *GENERALIZED* CONVLSTM MODEL (EARTHFORMER LOGIC)
 # ==============================================================================
 
 import matplotlib
 matplotlib.use('Agg')
-
 import os
 import argparse
 import numpy as np
@@ -17,7 +16,17 @@ import sys
 import warnings
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
-from omegaconf import OmegaConf
+
+# --- Constants from Earthformer Inference (CRITICAL FOR PARITY) ---
+TEACHER_LAT = (15.625, 20.625)
+TEACHER_LON = (65.625, 72.375)
+PATCH_LAT_DEG = 5.0
+PATCH_LON_DEG = 6.75
+STRIDE_LAT_FRACTION = 0.30
+STRIDE_DEG = STRIDE_LAT_FRACTION * PATCH_LAT_DEG  # 1.5 degrees
+# Last training patch (9 strides south of teacher)
+LAST_PATCH_LAT = (TEACHER_LAT[0] - 9 * STRIDE_DEG, TEACHER_LAT[1] - 9 * STRIDE_DEG)
+LAST_PATCH_LON = TEACHER_LON
 
 # --- Add Repository Root to Python Path ---
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -25,19 +34,58 @@ _ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', '..', '..'))
 if _ROOT_DIR not in sys.path:
     sys.path.append(_ROOT_DIR)
 
-try:
-    from scripts.cuboid_transformer.sst.train_cuboid_sst import CuboidSSTPLModule
-    from scripts.student_model import ConvLSTMStudent
-except ImportError as e:
-    print(f"Error: Could not import modules. {e}")
-    exit(1)
+from scripts.cuboid_transformer.sst.train_cuboid_sst import CuboidSSTPLModule
+from scripts.student_model import ConvLSTMStudent
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 warnings.filterwarnings("ignore")
 
-def slice_type(x):
-    start, end = map(float, x.split(':'))
-    return slice(start, end)
+# ==============================================================================
+# PATCH COMPUTATION LOGIC (COPIED FROM EARTHFORMER INFERENCE)
+# ==============================================================================
+
+def compute_southward_patches():
+    patches = []
+    overlaps = [0, 30, 60, 90, 100]
+    for overlap_pct in overlaps:
+        effective_stride = STRIDE_DEG * (1 - overlap_pct / 100.0)
+        new_lat_start = LAST_PATCH_LAT[0] - effective_stride
+        new_lat_end = LAST_PATCH_LAT[1] - effective_stride
+        patches.append((f"South_Olp_{overlap_pct}", (new_lat_start, new_lat_end), LAST_PATCH_LON))
+    return patches
+
+def compute_westward_patches():
+    patches = []
+    overlaps = [0, 30, 60, 90, 100]
+    for overlap_pct in overlaps:
+        effective_stride = PATCH_LON_DEG * (1 - overlap_pct / 100.0)
+        new_lon_start = LAST_PATCH_LON[0] - effective_stride
+        new_lon_end = LAST_PATCH_LON[1] - effective_stride
+        patches.append((f"West_Olp_{overlap_pct}", LAST_PATCH_LAT, (new_lon_start, new_lon_end)))
+    return patches
+
+# ==============================================================================
+# RESIZING AND UTILS
+# ==============================================================================
+
+def _resize_2d(x, target_h, target_w):
+    h, w = x.shape
+    scale_h, scale_w = h / target_h, w / target_w
+    out = np.zeros((target_h, target_w), dtype=x.dtype)
+    for i in range(target_h):
+        for j in range(target_w):
+            i0, i1 = int(i * scale_h), min(int((i + 1) * scale_h), h)
+            j0, j1 = int(j * scale_w), min(int((j + 1) * scale_w), w)
+            window = x[i0:max(i1, i0+1), j0:max(j1, j0+1)]
+            out[i, j] = np.nanmean(window) if window.size > 0 else x[min(i0, h-1), min(j0, w-1)]
+    return out
+
+def _resize_patch(data, target_h, target_w):
+    t, h, w = data.shape
+    out = np.zeros((t, target_h, target_w), dtype=data.dtype)
+    for i in range(t):
+        out[i] = _resize_2d(data[i], target_h, target_w)
+    return out
 
 def create_sequences(data, in_len, out_len):
     sequences = []
@@ -46,219 +94,125 @@ def create_sequences(data, in_len, out_len):
         sequences.append(data[i:i + total_seq_len])
     if not sequences: return None, None
     sequences = np.array(sequences, dtype=np.float32)
-    x = torch.from_numpy(sequences[:, :in_len])
-    y = torch.from_numpy(sequences[:, in_len:])
-    return x, y
+    return torch.from_numpy(sequences[:, :in_len]), torch.from_numpy(sequences[:, in_len:])
 
-def plot_comparison(actuals_denorm, preds_denorm, time_axis, title, save_path, y_ticks, lat_range, lon_range, label="Predicted SST"):
-    try:
-        logging.info(f"Saving plot to {save_path}...")
-        final_mse = mean_squared_error(actuals_denorm, preds_denorm)
-        plt.style.use('seaborn-v0_8-whitegrid')
-        fig, ax = plt.subplots(figsize=(20, 8))
-        
-        ax.plot(time_axis, actuals_denorm, label='Actual Spatially-Averaged SST', color='blue', linewidth=2)
-        ax.plot(time_axis, preds_denorm, label=label, linestyle='--', color='red', alpha=0.9, linewidth=1.5)
-        
-        # --- Range Text on top of the image plot area ---
-        range_str = f"Range: Lat {lat_range[0]:.2f} to {lat_range[1]:.2f} | Lon {lon_range[0]:.2f} to {lon_range[1]:.2f}"
-        ax.text(0.5, 1.05, range_str, transform=ax.transAxes, ha='center', 
-                fontsize=13, fontweight='bold', color='black')
+# ==============================================================================
+# PLOTTING
+# ==============================================================================
 
-        ax.set_title(f"{title} (MSE: {final_mse:.4f})", fontsize=16, pad=30)
-        ax.set_yticks(y_ticks)
-        ax.set_xlabel('Date', fontsize=14); ax.set_ylabel('SST (°C)', fontsize=14)
-        ax.legend(loc='upper left'); ax.grid(True)
-        
-        fig.tight_layout()
-        plt.savefig(save_path, dpi=300); plt.close(fig)
-    except Exception as e:
-        logging.error(f"Error during plotting: {e}")
-        
-# --- CHANGE 1: Full Implementation of Pure Ocean Random Patches ---
-def compute_random_patches(ds, seed=42):
-    np.random.seed(seed)
-    patches = []
-    # Reference training center for Indian Ocean
-    train_lat_center, train_lon_center = 18.125, 69.0 
-    lat_dim, lon_dim = 5.0, 6.75
-
-    def is_pure_ocean(lat_rng, lon_rng):
-        try:
-            sample = ds["sst"].isel(time=0).sel(lat=slice(*lat_rng), lon=slice(*lon_rng)).values
-            return sample.size > 0 and not np.any(np.isnan(sample))
-        except: return False
-
-    for mode in ["random_near", "random_far"]:
-        found = False
-        attempts = 0
-        while not found and attempts < 100:
-            offset = 10 if "near" in mode else 40
-            lat_start = train_lat_center + np.random.uniform(-offset, offset)
-            lon_start = train_lon_center + np.random.uniform(-offset, offset)
-            lats, lons = (lat_start, lat_start + lat_dim), (lon_start, lon_start + lon_dim)
-            if is_pure_ocean(lats, lons):
-                patches.append((mode, lats, lons))
-                found = True
-            attempts += 1
-    return patches
-
-def run_evaluation_for_patch(
-    teacher_model, student_type, student_model, ds_full, hparams, 
-    mean_original, std_original, center_lat, center_lon, 
-    scenario_name, plot_save_dir, device
-):
-    logging.info(f"\n===== Scenario: {scenario_name} =====")
+def plot_comparison(actuals_denorm, preds_denorm, time_axis, title, save_path, y_ticks, lat_range, lon_range):
+    final_mse = mean_squared_error(actuals_denorm, preds_denorm)
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots(figsize=(20, 8))
     
-    # Define exact boundaries matching Earthformer logic
-    lat_range = (center_lat - 2.5, center_lat + 2.5)
-    lon_range = (center_lon - 3.375, center_lon + 3.375)
+    ax.plot(time_axis, actuals_denorm, label='Actual Spatially-Averaged SST', color='blue', linewidth=2)
+    ax.plot(time_axis, preds_denorm, label='Predicted SST', linestyle='--', color='red', alpha=0.9, linewidth=1.5)
     
-    ds_patch_spatial = ds_full.sel(
-        lat=slice(lat_range[0], lat_range[1]),
-        lon=slice(lon_range[0], lon_range[1])
-    )
+    range_str = f"Range: Lat {lat_range[0]:.3f} to {lat_range[1]:.3f} | Lon {lon_range[0]:.3f} to {lon_range[1]:.3f}"
+    ax.text(0.5, 1.05, range_str, transform=ax.transAxes, ha='center', fontsize=13, fontweight='bold')
+
+    ax.set_title(f"{title}\nFinal MSE: {final_mse:.4f}", fontsize=16, pad=30)
+    ax.set_yticks(y_ticks)
+    ax.set_xlabel('Date'); ax.set_ylabel('SST (°C)')
+    ax.legend(loc='upper left'); ax.grid(True)
+    fig.tight_layout()
+    plt.savefig(save_path, dpi=300); plt.close(fig)
+
+# ==============================================================================
+# EVALUATION CORE
+# ==============================================================================
+
+def run_evaluation_for_patch(teacher_model, student_model, ds_full, hparams, mean_orig, std_orig, lat_range, lon_range, scenario_name, plot_save_dir, device):
+    logging.info(f"Evaluating: {scenario_name}")
     
-    ds_new_patch = ds_patch_spatial.sel(time=slice('2021', None))
-    new_patch_data_raw = ds_new_patch['sst'].values.astype(np.float32)
-    new_patch_data_filled = np.nan_to_num(new_patch_data_raw, nan=mean_original)
+    ds_patch = ds_full.sel(lat=slice(*lat_range), lon=slice(*lon_range))
+    ds_test = ds_patch.sel(time=slice('2021', '2026'))
     
-    # Resize to match Earthformer's spatial manifold
-    new_patch_resized = _resize_patch(new_patch_data_filled, 21, 28)
-    new_patch_normalized = (new_patch_resized - mean_original) / std_original
-    new_patch_normalized = new_patch_normalized[:, np.newaxis, :, :]
+    raw_data = ds_test['sst'].values.astype(np.float32)
+    filled_data = np.nan_to_num(raw_data, nan=mean_orig)
+    resized_data = _resize_patch(filled_data, 21, 28)
+    
+    norm_data = (resized_data - mean_orig) / std_orig
+    norm_data = norm_data[:, np.newaxis, :, :] # (T, 1, H, W)
 
     in_len, out_len = hparams.dataset.in_len, hparams.dataset.out_len
-    input_seqs, target_seqs = create_sequences(new_patch_normalized, in_len, out_len)
+    input_seqs, target_seqs = create_sequences(norm_data, in_len, out_len)
     if input_seqs is None: return
 
-    full_loader = DataLoader(TensorDataset(input_seqs, target_seqs), batch_size=16, shuffle=False)
+    loader = DataLoader(TensorDataset(input_seqs, target_seqs), batch_size=16)
+    all_student_preds, all_actuals = [], []
 
-    all_student_preds, all_actuals = [] , []
     with torch.no_grad():
-        for x_batch, y_batch in tqdm(full_loader, desc=f"Inference"):
-            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-
+        for x_batch, y_batch in loader:
+            x_batch = x_batch.to(device)
+            # Match Distillation Logic: Teacher predicts -> Student consumes first step
             teacher_in = x_batch.permute(0, 1, 3, 4, 2)
-            teacher_out_raw = teacher_model(teacher_in) 
-            teacher_pred_norm = teacher_out_raw.permute(0, 1, 4, 2, 3) 
+            teacher_out = teacher_model(teacher_in)
+            student_in = teacher_out.permute(0, 1, 4, 2, 3)[:, 0:1]
+            student_pred = student_model(student_in)
 
-            student_in = teacher_pred_norm[:, 0:1, :, :, :] 
-            student_pred_norm = student_model(student_in)
-
-            all_student_preds.extend(student_pred_norm.mean(dim=(2,3,4)).cpu().numpy())
+            all_student_preds.extend(student_pred.mean(dim=(2,3,4)).cpu().numpy())
             all_actuals.extend(y_batch[:, 0:1].mean(dim=(2,3,4)).cpu().numpy())
 
-    actuals_spatial_avg = new_patch_resized.mean(axis=(1, 2))
-    actuals_denorm = actuals_spatial_avg[in_len : len(all_student_preds) + in_len]
-    student_denorm = (np.array(all_student_preds).flatten() * std_original) + mean_original
+    actuals_denorm = (np.array(all_actuals).flatten() * std_orig) + mean_orig
+    student_denorm = (np.array(all_student_preds).flatten() * std_orig) + mean_orig
     
-    time_axis = ds_new_patch.get_index("time")[in_len : len(actuals_denorm) + in_len]
+    time_axis = ds_test.get_index("time")[in_len : len(actuals_denorm) + in_len]
     y_ticks = np.arange(np.floor(actuals_denorm.min()), np.ceil(actuals_denorm.max()) + 1, 1.0)
 
-    # Pass lat_range and lon_range here
-    plot_comparison(actuals_denorm, student_denorm, time_axis, f"Student: {scenario_name}", 
+    plot_comparison(actuals_denorm, student_denorm, time_axis, f"ConvLSTM: {scenario_name}", 
                     os.path.join(plot_save_dir, f"student_{scenario_name}.png"), 
                     y_ticks, lat_range, lon_range)
 
-def get_args_parser():
-    """Parses command line arguments."""
-    parser = argparse.ArgumentParser(description='Generalized Student Evaluation Script')
-    parser.add_argument('--teacher_ckpt_path', type=str, required=True,
-                        help='Path to the pre-trained Earthformer (Teacher) .ckpt file.')
-    parser.add_argument('--student_ckpt_path', type=str, required=True,
-                        help='Path to the *generalized* (multi-patch) Student .pth file.')
-    parser.add_argument('--cfg', type=str, required=True,
-                        help='Path to the .yaml config file (e.g., sst.yaml).')
-    parser.add_argument('--data_path', type=str, required=True,
-                        help='Path to the single .nc file (e.g., sst.week.mean.nc).')
-    parser.add_argument('--plot_save_dir', type=str, default='evaluation_plots_generalized',
-                        help='Directory to save the new comparison plots.')
-    
-    # Base patch args (used for calculating the normalization stats)
-    parser.add_argument('--base_lat_slice', type=slice_type, default="15.625:20.625")
-    parser.add_argument('--base_lon_slice', type=slice_type, default="65.625:72.375")
-    parser.add_argument('--train_end_year', type=int, default=2015)
-    
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
-                        help='Device to use for evaluation (cuda or cpu).')
-    return parser
-
-def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
-    """Simple 2D resize using area averaging."""
-    h, w = x.shape
-    scale_h, scale_w = h / target_h, w / target_w
-    out = np.zeros((target_h, target_w), dtype=x.dtype)
-    for i in range(target_h):
-        for j in range(target_w):
-            i0 = int(i * scale_h)
-            i1 = min(int((i + 1) * scale_h), h)
-            j0 = int(j * scale_w)
-            j1 = min(int((j + 1) * scale_w), w)
-            window = x[i0:i1, j0:j1]
-            out[i, j] = np.nanmean(window) if window.size > 0 else x[i0, j0]
-    return out
-
-def _resize_patch(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
-    t, h, w = data.shape
-    out = np.zeros((t, target_h, target_w), dtype=data.dtype)
-    for i in range(t):
-        out[i] = _resize_2d(data[i], target_h, target_w)
-    return out
-
 def main():
-    parser = get_args_parser()
-    args = parser.parse_args()
-    device = torch.device(args.device)
-    os.makedirs(args.plot_save_dir, exist_ok=True)
-
-    # Load Teacher
-    pl_module = CuboidSSTPLModule.load_from_checkpoint(args.teacher_ckpt_path, oc_file=args.cfg, save_dir=args.plot_save_dir)
-    teacher_model = pl_module.torch_nn_module.to(device).eval()
-    hparams = pl_module.hparams
-
-    # Load Student
-    if args.student_ckpt_path.endswith('.pth'):
-        student_model = ConvLSTMStudent(input_dim=1, hidden_dim=12, kernel_size=(3, 3), num_layers=2).to(device)
-        student_model.load_state_dict(torch.load(args.student_ckpt_path, map_location=device))
-        student_type = "convlstm"
-    else:
-        student_pl = CuboidSSTPLModule.load_from_checkpoint(args.student_ckpt_path, oc_file=args.cfg, save_dir=args.plot_save_dir)
-        student_model = student_pl.torch_nn_module.to(device)
-        student_type = "earthformer"
-    student_model.eval()
-
-    ds_full = xr.open_dataset(args.data_path)
-    train_stats = ds_full['sst'].sel(time=slice(None, str(args.train_end_year)), lat=args.base_lat_slice, lon=args.base_lon_slice).values
-    mean_original, std_original = np.nanmean(train_stats), np.nanstd(train_stats)
-    logging.info(f"Stats: Mean {mean_original:.4f}, Std {std_original:.4f}")
-
-    # --- CHANGE 4: Define variables and call random patches correctly ---
-    overlaps = [0, 30, 60, 90]
-    LAT_DIM, LON_DIM = 5.0, 6.75
-    last_center_lat, last_center_lon = 18.125, 85.875
+    # Use your existing argparse logic here (omitted for brevity)
+    # ... assuming args are parsed ...
+    
+    # Generate patches exactly like Earthformer script
     scenarios = []
+    south_patches = compute_southward_patches()
+for name, lat_rng, lon_rng in south_patches:
+    scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
 
-    for p in overlaps:
-        stride = LAT_DIM * (1 - p / 100.0)
-        scenarios.append({"name": f"South_Olp_{p}", "center_lat": last_center_lat - stride, "center_lon": last_center_lon})
-        
-    for p in overlaps:
-        stride = LON_DIM * (1 - p / 100.0)
-        scenarios.append({"name": f"West_Olp_{p}", "center_lat": last_center_lat, "center_lon": last_center_lon - stride})
+# Westward Patches
+west_patches = compute_westward_patches()
+for name, lat_rng, lon_rng in west_patches:
+    scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
 
-    # Correct call to the random function
-    random_results = compute_random_patches(ds_full, seed=42)
-    for name, lats, lons in random_results:
-        scenarios.append({"name": name, "center_lat": (lats[0]+lats[1])/2, "center_lon": (lons[0]+lons[1])/2})
+# Random Patches
+random_results = compute_random_patches(ds_full, seed=42)
+for name, lat_rng, lon_rng in random_results:
+    scenarios.append({"name": name, "lat": lat_rng, "lon": lon_rng})
 
-    for scenario in scenarios:
-        run_evaluation_for_patch(teacher_model, student_type, student_model, ds_full, hparams, 
-                                 mean_original, std_original, scenario["center_lat"], scenario["center_lon"],
-                                 scenario["name"], args.plot_save_dir, device)
+# --- Execution with Console Printing ---
+print(f"\n{'='*60}")
+print(f"STARTING GENERALIZED CONVLSTM INFERENCE")
+print(f"{'='*60}")
 
-    ds_full.close()
-    logging.info("Evaluation complete.")
+for scenario in scenarios:
+    name = scenario["name"]
+    la = scenario["lat"]
+    lo = scenario["lon"]
+    
+    # This prints the range to the console before running the specific patch
+    print(f"\nTesting patch: {name}")
+    print(f"  Latitude:  {la[0]:.3f} to {la[1]:.3f}")
+    print(f"  Longitude: {lo[0]:.3f} to {lo[1]:.3f}")
+    
+    run_evaluation_for_patch(
+        teacher_model=teacher_model, 
+        student_model=student_model, 
+        ds_full=ds_full, 
+        hparams=hparams, 
+        mean_orig=mean_original, 
+        std_orig=std_original, 
+        lat_range=la, 
+        lon_range=lo, 
+        scenario_name=name, 
+        plot_save_dir=args.plot_save_dir, 
+        device=device
+    )
 
 if __name__ == '__main__':
+    # Add your argparse and initialization here
     main()
