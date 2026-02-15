@@ -56,7 +56,7 @@ def get_actual_data_for_checkpoint(checkpoint_path: str, cfg_path: str, save_dir
     print("  Setting up datamodule from checkpoint configuration...")
     dataset_cfg = OmegaConf.to_object(model.hparams.dataset)
     # Clean up config for DataModule instantiation
-    for key in ["_target_", "train_start_year", "val_start_year", "test_start_year", "end_year"]:
+    for key in ["_target_", "train_start_year", "val_start_year", "test_start_year", "end_year", "filename", "data_dir"]:
         dataset_cfg.pop(key, None)
 
     datamodule = SSTDataModule(**dataset_cfg)
