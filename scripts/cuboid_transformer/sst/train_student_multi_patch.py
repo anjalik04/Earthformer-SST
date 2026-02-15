@@ -193,7 +193,7 @@ def load_and_prep_multi_patch_data(args, hparams):
                 "center_lon": 69.0
             })
 
-        --- NEW: GEOSPATIAL PATCH DETAILS PRINT BLOCK ---
+        #--- NEW: GEOSPATIAL PATCH DETAILS PRINT BLOCK ---
         print("\n" + "="*50)
         print("--- GEOSPATIAL PATCH DETAILS ---")
         print(f"Total Student Patches: {len(scenarios)}")
