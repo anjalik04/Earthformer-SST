@@ -371,6 +371,7 @@ def main():
         #     "center_lon": 106.125 # 99.375 + 6.75
         # },
     ]
+    overlaps = [0, 30, 60, 90]
     LAT_DIM = 5.0
     LON_DIM = 6.75
     last_center_lat = 18.125 
