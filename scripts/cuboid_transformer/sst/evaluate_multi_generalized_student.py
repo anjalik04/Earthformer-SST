@@ -44,6 +44,14 @@ warnings.filterwarnings("ignore")
 # PATCH COMPUTATION LOGIC (COPIED FROM EARTHFORMER INFERENCE)
 # ==============================================================================
 
+def slice_type(x):
+    """Helper to convert string 'start:end' into a python slice object."""
+    try:
+        start, end = map(float, x.split(':'))
+        return slice(start, end)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Slice must be in the format 'start:end' (e.g., 15.625:20.625)")
+
 def compute_southward_patches():
     patches = []
     overlaps = [0, 30, 60, 90, 100]
