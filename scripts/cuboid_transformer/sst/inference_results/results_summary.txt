@@ -40,10 +40,10 @@ Patch: west_0pct_overlap
   Longitude: 58.875 to 65.625
   MSE: 0.3359
 
-Patch: west_35pct_overlap
+Patch: west_30pct_overlap
   Latitude:  2.125 to 7.125
-  Longitude: 61.237 to 67.987
-  MSE: 0.2408
+  Longitude: 60.900 to 67.650
+  MSE: 0.2500
 
 Patch: west_60pct_overlap
   Latitude:  2.125 to 7.125
