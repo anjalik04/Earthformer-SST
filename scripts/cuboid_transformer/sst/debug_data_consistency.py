@@ -46,7 +46,9 @@ def get_actual_data_for_checkpoint(checkpoint_path: str, cfg_path: str, save_dir
     model = CuboidSSTPLModule.load_from_checkpoint(
         checkpoint_path,
         oc_file=cfg_path,
-        save_dir=save_dir
+        save_dir=save_dir,
+        weights_only = False,
+        strict = False
     )
     model.eval()
 
