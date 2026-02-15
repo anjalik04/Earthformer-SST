@@ -92,8 +92,8 @@ def compare_data_pipelines():
     # --- 1. CONFIGURATION ---
     print("Step 1: Configuring paths...")
     
-    CFG_PATH _1= "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
-    CFG_PATH _2= "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst_distill_earthformer.yaml"
+    CFG_PATH_1= "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
+    CFG_PATH_2= "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst_distill_earthformer.yaml"
     
     # !!! UPDATE THESE PATHS !!!
     # Define the two checkpoints you want to compare
