@@ -76,8 +76,6 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
                 out[i, j] = x[min(i0, h-1), min(j0, w-1)]
             else:
                 out[i, j] = np.nanmean(window)
-    print(f"  [Post-Resize Check] Grid shape: {patch_norm.shape}")
-    print(f"  [Post-Resize Check] NaNs in grid: {np.isnan(patch_norm).sum()}")
     return out
 
 
@@ -245,6 +243,8 @@ def run_inference_on_patch(
     patch_norm = (patch_raw - mean) / std
     if patch_norm.shape[1] != target_h or patch_norm.shape[2] != target_w:
         patch_norm = _resize_patch(patch_norm, target_h, target_w)
+    print(f"  [Post-Resize Check] Grid shape: {patch_norm.shape}")
+    print(f"  [Post-Resize Check] NaNs in grid: {np.isnan(patch_norm).sum()}")
     patch_norm = patch_norm[:, np.newaxis, :, :]  # (T, 1, H, W)
     
     seq_len = in_len + out_len
