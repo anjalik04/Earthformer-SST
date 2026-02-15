@@ -92,7 +92,8 @@ def compare_data_pipelines():
     # --- 1. CONFIGURATION ---
     print("Step 1: Configuring paths...")
     
-    CFG_PATH = "/content/Earthformer/scripts/cuboid_transformer/sst/sst.yaml"
+    CFG_PATH _1= "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
+    CFG_PATH _2= "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst_distill_earthformer.yaml"
     
     # !!! UPDATE THESE PATHS !!!
     # Define the two checkpoints you want to compare
@@ -100,20 +101,20 @@ def compare_data_pipelines():
     CHECKPOINT_PATH_2 = "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/experiments/sst_southward_run/checkpoints/student-epoch=043.ckpt/" # Example: a different epoch
     
     # This usually stays the same if checkpoints are from the same run
-    save_directory_name = "sst_colab_run_1"
+    save_directory_name = "consistency_check"
 
     # --- 2. GET DATA FROM BOTH CHECKPOINTS ---
     print("\nStep 2: Getting data from the first checkpoint pipeline...")
     train1, val1, test1 = get_actual_data_for_checkpoint(
         checkpoint_path=CHECKPOINT_PATH_1,
-        cfg_path=CFG_PATH,
+        cfg_path=CFG_PATH_1,
         save_dir=save_directory_name
     )
 
     print("\nStep 3: Getting data from the second checkpoint pipeline...")
     train2, val2, test2 = get_actual_data_for_checkpoint(
         checkpoint_path=CHECKPOINT_PATH_2,
-        cfg_path=CFG_PATH,
+        cfg_path=CFG_PATH_2,
         save_dir=save_directory_name
     )
 
