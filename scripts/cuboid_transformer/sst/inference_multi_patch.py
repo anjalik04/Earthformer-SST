@@ -69,7 +69,15 @@ def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
             i1 = min(int((i + 1) * scale_h), h)
             j0 = int(j * scale_w)
             j1 = min(int((j + 1) * scale_w), w)
-            out[i, j] = np.nanmean(x[i0:i1, j0:j1])
+            i1 = max(i1, i0 + 1)
+            j1 = max(j1, j0 + 1)
+            window = x[min(i0, h-1):min(i1, h), min(j0, w-1):min(j1, w)]
+            if window.size == 0:
+                out[i, j] = x[min(i0, h-1), min(j0, w-1)]
+            else:
+                out[i, j] = np.nanmean(window)
+    print(f"  [Post-Resize Check] Grid shape: {patch_norm.shape}")
+    print(f"  [Post-Resize Check] NaNs in grid: {np.isnan(patch_norm).sum()}")
     return out
 
 
