@@ -165,7 +165,7 @@ def load_and_prep_multi_patch_data(args, hparams):
     
         # --- 1. Get Base Patch Stats ---
         logging.info("Calculating normalization stats from Base Patch...")
-        base_train_slice = slice(None, str(args.train_end_year))
+        base_train_slice = slice("2001", str(args.train_end_year))
         train_data_for_stats = ds_full['sst'].sel(
             time=base_train_slice, lat=args.base_lat_slice, lon=args.base_lon_slice
         ).values.astype(np.float32)
@@ -192,7 +192,28 @@ def load_and_prep_multi_patch_data(args, hparams):
                 "center_lat": 18.125 - (i * 1.5), 
                 "center_lon": 69.0
             })
-    
+
+        --- NEW: GEOSPATIAL PATCH DETAILS PRINT BLOCK ---
+        print("\n" + "="*50)
+        print("--- GEOSPATIAL PATCH DETAILS ---")
+        print(f"Total Student Patches: {len(scenarios)}")
+        
+        # Calculate time steps based on the dataset length and your 2001 start
+        full_time = ds_full.get_index("time")
+        train_len = len(full_time.slice_indexer("2001", str(args.train_end_year)))
+        val_len = len(full_time.slice_indexer(str(args.train_end_year + 1), str(args.val_end_year)))
+        
+        print(f"Time Steps (Train): {train_len} weeks")
+        print(f"Time Steps (Val):   {val_len} weeks")
+
+        # Loop through to show coordinate ranges
+        for i, s in enumerate(scenarios):
+            lat_min, lat_max = s['center_lat'] - 2.375, s['center_lat'] + 2.375
+            lon_min, lon_max = s['center_lon'] - 3.375, s['center_lon'] + 3.375
+            print(f"Patch {i:02d}: Lat [{lat_min:.3f} to {lat_max:.3f}], Lon [{lon_min:.3f} to {lon_max:.3f}]")
+        print("="*50 + "\n")
+        # ------------------------------------------------
+        
         all_train_x, all_train_y = [], []
         all_val_x, all_val_y = [], []
     
@@ -278,7 +299,7 @@ def load_and_prep_multi_patch_data(args, hparams):
                                 num_workers=args.num_workers, pin_memory=True)
                                 
         ds_full.close()
-        return train_loader, val_loader
+        return train_loader, val_loader, None
     else:
         raise ValueError(f"Unsupported file format: {args.data_path}. Must be .nc or .pt")
 
