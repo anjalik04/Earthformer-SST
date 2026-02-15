@@ -96,8 +96,8 @@ def compare_data_pipelines():
     
     # !!! UPDATE THESE PATHS !!!
     # Define the two checkpoints you want to compare
-    CHECKPOINT_PATH_1 = "/content/Earthformer/scripts/cuboid_transformer/sst/experiments/sst_colab_run_1/checkpoints/model-epoch=019.ckpt"
-    CHECKPOINT_PATH_2 = "/content/Earthformer/scripts/cuboid_transformer/sst/experiments/sst_colab_run_1/checkpoints/last.ckpt" # Example: a different epoch
+    CHECKPOINT_PATH_1 = "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/experiments/convlstm_southward_run/best_generalized_student.ckpt"
+    CHECKPOINT_PATH_2 = "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/experiments/sst_southward_run/checkpoints/student-epoch=043.ckpt/" # Example: a different epoch
     
     # This usually stays the same if checkpoints are from the same run
     save_directory_name = "sst_colab_run_1"
