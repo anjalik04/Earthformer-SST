@@ -155,22 +155,40 @@ def create_sequences(data, in_len, out_len):
 # ==============================================================================
 
 def plot_comparison(actuals_denorm, preds_denorm, time_axis, title, save_path, y_ticks, lat_range, lon_range):
-    final_mse = mean_squared_error(actuals_denorm, preds_denorm)
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(20, 8))
-    
-    ax.plot(time_axis, actuals_denorm, label='Actual Spatially-Averaged SST', color='blue', linewidth=2)
-    ax.plot(time_axis, preds_denorm, label='Predicted SST', linestyle='--', color='red', alpha=0.9, linewidth=1.5)
-    
-    range_str = f"Range: Lat {lat_range[0]:.3f} to {lat_range[1]:.3f} | Lon {lon_range[0]:.3f} to {lon_range[1]:.3f}"
-    ax.text(0.5, 1.05, range_str, transform=ax.transAxes, ha='center', fontsize=13, fontweight='bold')
+    try:
+        logging.info(f"Saving plot to {save_path}...")
+        final_mse = mean_squared_error(actuals_denorm, preds_denorm)
+        
+        plt.style.use('seaborn-v0_8-whitegrid')
+        # Constrained layout helps manage the padding automatically
+        fig, ax = plt.subplots(figsize=(20, 8), constrained_layout=False)
+        
+        # Plotting
+        ax.plot(time_axis, actuals_denorm, label='Actual Spatially-Averaged SST', color='blue', linewidth=2)
+        ax.plot(time_axis, preds_denorm, label='Predicted SST', linestyle='--', color='red', alpha=0.9, linewidth=1.5)
+        
+        # --- FIX: Higher text placement + Bounding Box to prevent clashing ---
+        range_str = f"Range: Lat {lat_range[0]:.3f} to {lat_range[1]:.3f} | Lon {lon_range[0]:.3f} to {lon_range[1]:.3f}"
+        ax.text(0.5, 1.12, range_str, transform=ax.transAxes, ha='center', 
+                fontsize=13, fontweight='bold', color='black',
+                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3))
 
-    ax.set_title(f"{title}\nFinal MSE: {final_mse:.4f}", fontsize=16, pad=30)
-    ax.set_yticks(y_ticks)
-    ax.set_xlabel('Date'); ax.set_ylabel('SST (°C)')
-    ax.legend(loc='upper left'); ax.grid(True)
-    fig.tight_layout()
-    plt.savefig(save_path, dpi=300); plt.close(fig)
+        # --- FIX: Added significant padding to title ---
+        ax.set_title(f"{title}\nFinal MSE: {final_mse:.4f}", fontsize=16, pad=50)
+        
+        ax.set_yticks(y_ticks)
+        ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('SST (°C)', fontsize=12)
+        ax.legend(loc='upper left', frameon=True)
+        ax.grid(True, linestyle=':', alpha=0.6)
+        
+        # --- FIX: Adjust figure top to ensure text isn't cut off ---
+        plt.subplots_adjust(top=0.82)
+        
+        plt.savefig(save_path, dpi=300)
+        plt.close(fig)
+    except Exception as e:
+        logging.error(f"Error during plotting: {e}")
 
 # ==============================================================================
 # EVALUATION CORE
