@@ -109,8 +109,13 @@ def run_evaluation_for_patch(
     start_lat_idx = int(np.clip(center_lat_idx - patch_height // 2, 0, len(ds_full.lat) - patch_height))
     start_lon_idx = int(np.clip(center_lon_idx - patch_width // 2, 0, len(ds_full.lon) - patch_width))
     
-    ds_new_patch = ds_full.isel(lat=slice(start_lat_idx, start_lat_idx + patch_height), 
-                                lon=slice(start_lon_idx, start_lon_idx + patch_width))
+    ds_patch_spatial = ds_full.isel(
+        lat=slice(start_lat_idx, start_lat_idx + patch_height), 
+        lon=slice(start_lon_idx, start_lon_idx + patch_width)
+    )
+
+    # THEN apply the temporal crop
+    ds_new_patch = ds_patch_spatial.sel(time=slice('2021', None))
     
     new_patch_data_raw = ds_new_patch['sst'].values.astype(np.float32)
     new_patch_data_filled = np.nan_to_num(new_patch_data_raw, nan=mean_original)
