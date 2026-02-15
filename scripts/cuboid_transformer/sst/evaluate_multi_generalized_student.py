@@ -72,6 +72,52 @@ def compute_westward_patches():
         patches.append((f"West_Olp_{overlap_pct}", LAST_PATCH_LAT, (new_lon_start, new_lon_end)))
     return patches
 
+def compute_random_patches(ds, seed=42):
+    """
+    Randomly selects patches across the global ocean.
+    Uses a 'Pure Ocean' check to ensure the patches don't hit land.
+    """
+    np.random.seed(seed)
+    patches = []
+    
+    # Reference training center for Indian Ocean
+    train_lat_center, train_lon_center = 18.125, 69.0 
+    lat_dim, lon_dim = 5.0, 6.75
+
+    def is_pure_ocean(lat_rng, lon_rng):
+        try:
+            # Check the first timestep for NaNs (land pixels)
+            sample = ds["sst"].isel(time=0).sel(lat=slice(*lat_rng), lon=slice(*lon_rng)).values
+            # Ensure the slice isn't empty and has no NaNs
+            return sample.size > 0 and not np.any(np.isnan(sample))
+        except Exception:
+            return False
+
+    # Modes: Near (±10 deg) and Far (±40 deg)
+    for mode in ["random_near", "random_far"]:
+        found = False
+        attempts = 0
+        while not found and attempts < 200: # Increased attempts for 'far' patches
+            offset = 10 if "near" in mode else 40
+            lat_start = train_lat_center + np.random.uniform(-offset, offset)
+            lon_start = train_lon_center + np.random.uniform(-offset, offset)
+            
+            # Constraints to keep it within global SST bounds
+            lat_start = np.clip(lat_start, -60, 60) 
+            lon_start = lon_start % 360 # Handle longitude wrap-around
+            
+            lats = (lat_start, lat_start + lat_dim)
+            lons = (lon_start, lon_start + lon_dim)
+            
+            if is_pure_ocean(lats, lons):
+                patches.append((mode, lats, lons))
+                found = True
+            attempts += 1
+            
+        if not found:
+            logging.warning(f"Could not find a pure ocean patch for {mode} after 200 attempts.")
+            
+    return patches
 # ==============================================================================
 # RESIZING AND UTILS
 # ==============================================================================
