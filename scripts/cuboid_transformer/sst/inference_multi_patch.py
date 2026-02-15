@@ -115,7 +115,7 @@ def compute_westward_patches() -> List[Tuple[str, Tuple[float, float], Tuple[flo
     Returns list of (name, lat_range, lon_range).
     """
     patches = []
-    overlaps = [0, 35, 60, 90, 100]
+    overlaps = [0, 30, 60, 90, 100]
     
     for overlap_pct in overlaps:
         # Calculate stride based on overlap
