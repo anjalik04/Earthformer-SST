@@ -119,9 +119,9 @@ def run_evaluation_for_patch(
     center_lat_idx = np.abs(ds_full.lat.values - center_lat).argmin()
     center_lon_idx = np.abs(ds_full.lon.values - center_lon).argmin()
 
-    start_lat_idx = center_lat_idx - patch_height // 2
+    start_lat_idx = max(0, min(center_lat_idx - patch_height // 2, len(ds_full.lat) - patch_height))
     end_lat_idx = start_lat_idx + patch_height
-    start_lon_idx = center_lon_idx - patch_width // 2
+    start_lon_idx = max(0, min(center_lon_idx - patch_width // 2, len(ds_full.lon) - patch_width))
     end_lon_idx = start_lon_idx + patch_width
     
     if start_lat_idx < 0 or end_lat_idx > len(ds_full.lat) or start_lon_idx < 0 or end_lon_idx > len(ds_full.lon):
@@ -264,6 +264,14 @@ def get_args_parser():
                         help='Device to use for evaluation (cuda or cpu).')
     return parser
 
+def compute_random_patches(ds, seed=42):
+    np.random.seed(seed)
+    patches = []
+    def is_pure_ocean(lat_rng, lon_rng):
+        sample = ds["sst"].isel(time=0).sel(lat=slice(*lat_rng), lon=slice(*lon_rng)).values
+        return sample.size > 0 and not np.any(np.isnan(sample))
+    return patches
+    
 def main():
     """
     Main function to load models once and loop through scenarios.
@@ -341,29 +349,55 @@ def main():
     # P3 (last training patch) was lon=82.5:89.25 (Center: 85.875)
     # 50% shift = 3.375 degrees. 100% shift = 6.75 degrees.
     scenarios = [
-        {
-            "name": "P4_Test_50_Overlap",
-            "center_lat": 18.125,
-            "center_lon": 89.25 # 85.875 + 3.375
-        },
-        {
-            "name": "P5_Test_0_Overlap",
-            "center_lat": 18.125,
-            "center_lon": 96.0 # 89.25 + 6.75
-        },
-        # --- NEW PATCHES ADDED HERE ---
-        {
-            "name": "P6_Test_50_Overlap",
-            "center_lat": 18.125,
-            "center_lon": 99.375 # 96.0 + 3.375
-        },
-        {
-            "name": "P7_Test_0_Overlap",
-            "center_lat": 18.125,
-            "center_lon": 106.125 # 99.375 + 6.75
-        },
+        # {
+        #     "name": "P4_Test_50_Overlap",
+        #     "center_lat": 18.125,
+        #     "center_lon": 89.25 # 85.875 + 3.375
+        # },
+        # {
+        #     "name": "P5_Test_0_Overlap",
+        #     "center_lat": 18.125,
+        #     "center_lon": 96.0 # 89.25 + 6.75
+        # },
+        # # --- NEW PATCHES ADDED HERE ---
+        # {
+        #     "name": "P6_Test_50_Overlap",
+        #     "center_lat": 18.125,
+        #     "center_lon": 99.375 # 96.0 + 3.375
+        # },
+        # {
+        #     "name": "P7_Test_0_Overlap",
+        #     "center_lat": 18.125,
+        #     "center_lon": 106.125 # 99.375 + 6.75
+        # },
     ]
+    LAT_DIM = 5.0
+    LON_DIM = 6.75
+    last_center_lat = 18.125 
+    last_center_lon = 85.875
+    for p in overlaps:
+        stride = LAT_DIM * (1 - p / 100.0)
+        scenarios.append({
+            "name": f"South_Overlap_{p}pct",
+            "center_lat": last_center_lat - stride,
+            "center_lon": last_center_lon
+        })
+        
+    for p in overlaps:
+        stride = LON_DIM * (1 - p / 100.0)
+        scenarios.append({
+            "name": f"West_Overlap_{p}pct",
+            "center_lat": last_center_lat,
+            "center_lon": last_center_lon - stride
+        })
 
+    for name, lats, lons in random_results:
+        scenarios.append({
+            "name": name,
+            "center_lat": (lats[0] + lats[1]) / 2,
+            "center_lon": (lons[0] + lons[1]) / 2
+        })
+    
     # --- 5. Loop through scenarios and generate 8 plots ---
     for scenario in scenarios:
         run_evaluation_for_patch(
