@@ -200,8 +200,10 @@ def load_and_prep_multi_patch_data(args, hparams):
         
         # Calculate time steps based on the dataset length and your 2001 start
         full_time = ds_full.get_index("time")
-        train_len = len(full_time.slice_indexer("2001", str(args.train_end_year)))
-        val_len = len(full_time.slice_indexer(str(args.train_end_year + 1), str(args.val_end_year)))
+        train_slice_obj = full_time.slice_indexer("2001", str(args.train_end_year))
+        val_slice_obj = full_time.slice_indexer(str(args.train_end_year + 1), str(args.val_end_year))
+        train_len = train_slice_obj.stop - train_slice_obj.start
+        val_len = val_slice_obj.stop - val_slice_obj.start
         
         print(f"Time Steps (Train): {train_len} weeks")
         print(f"Time Steps (Val):   {val_len} weeks")
