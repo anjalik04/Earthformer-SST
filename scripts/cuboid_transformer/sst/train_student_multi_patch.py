@@ -178,18 +178,27 @@ def load_and_prep_multi_patch_data(args, hparams):
         # (Base, P0, P1, P2, P3)
         # --- FIX: Using center_lat/lon to slice by index ---
         scenarios = [
-            {"name": "Base_Patch", "center_lat": 18.125, "center_lon": 69.0},     # 65.625:72.375
-            {"name": "P0_Shift",   "center_lat": 18.125, "center_lon": 75.75},    # 72.375:79.125
-            {"name": "P1_Shift",   "center_lat": 18.125, "center_lon": 79.125},   # 75.75:82.5
-            {"name": "P2_Shift",   "center_lat": 18.125, "center_lon": 82.5},     # 79.125:85.875
-            {"name": "P3_Shift",   "center_lat": 18.125, "center_lon": 85.875}    # 82.5:89.25
+            # {"name": "Base_Patch", "center_lat": 18.125, "center_lon": 69.0},     # 65.625:72.375
+            # {"name": "P0_Shift",   "center_lat": 18.125, "center_lon": 75.75},    # 72.375:79.125
+            # {"name": "P1_Shift",   "center_lat": 18.125, "center_lon": 79.125},   # 75.75:82.5
+            # {"name": "P2_Shift",   "center_lat": 18.125, "center_lon": 82.5},     # 79.125:85.875
+            # {"name": "P3_Shift",   "center_lat": 18.125, "center_lon": 85.875}    # 82.5:89.25
         ]
+        for i in range(10):
+            # Latitude drops by 1.5 degrees per patch (20.375 -> 18.875 -> ...)
+            # Longitude stays fixed at the Teacher's center (69.0)
+            scenarios.append({
+                "name": f"South_Patch_{i:02d}",
+                "center_lat": 18.125 - (i * 1.5), 
+                "center_lon": 69.0
+            })
     
         all_train_x, all_train_y = [], []
         all_val_x, all_val_y = [], []
     
         in_len = hparams.dataset.in_len
         out_len = hparams.dataset.out_len
+        base_train_slice = slice("2001", str(args.train_end_year))
         val_slice = slice(str(args.train_end_year + 1), str(args.val_end_year))
         
         patch_height, patch_width = 21, 28
