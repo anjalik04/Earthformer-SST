@@ -139,7 +139,7 @@ def compute_westward_patches() -> List[Tuple[str, Tuple[float, float], Tuple[flo
     return patches
 
 
-def compute_random_patches(seed: int = 42) -> List[Tuple[str, Tuple[float, float], Tuple[float, float]]]:
+def compute_random_patches(ds: xr.Dataset, seed: int = 42) -> List[Tuple[str, Tuple[float, float], Tuple[float, float]]]:
     """
     Compute two random test patches:
     1. Near training region (within ±10 degrees of training patches)
