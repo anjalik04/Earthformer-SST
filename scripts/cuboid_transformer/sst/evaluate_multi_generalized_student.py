@@ -155,6 +155,29 @@ def run_evaluation_for_patch(
     plot_comparison(actuals_denorm, student_denorm, time_axis, f"Student: {scenario_name}", 
                     os.path.join(plot_save_dir, f"student_{scenario_name}.png"), y_ticks)
 
+def get_args_parser():
+    """Parses command line arguments."""
+    parser = argparse.ArgumentParser(description='Generalized Student Evaluation Script')
+    parser.add_argument('--teacher_ckpt_path', type=str, required=True,
+                        help='Path to the pre-trained Earthformer (Teacher) .ckpt file.')
+    parser.add_argument('--student_ckpt_path', type=str, required=True,
+                        help='Path to the *generalized* (multi-patch) Student .pth file.')
+    parser.add_argument('--cfg', type=str, required=True,
+                        help='Path to the .yaml config file (e.g., sst.yaml).')
+    parser.add_argument('--data_path', type=str, required=True,
+                        help='Path to the single .nc file (e.g., sst.week.mean.nc).')
+    parser.add_argument('--plot_save_dir', type=str, default='evaluation_plots_generalized',
+                        help='Directory to save the new comparison plots.')
+    
+    # Base patch args (used for calculating the normalization stats)
+    parser.add_argument('--base_lat_slice', type=slice_type, default="15.625:20.625")
+    parser.add_argument('--base_lon_slice', type=slice_type, default="65.625:72.375")
+    parser.add_argument('--train_end_year', type=int, default=2015)
+    
+    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
+                        help='Device to use for evaluation (cuda or cpu).')
+    return parser
+
 def main():
     parser = get_args_parser()
     args = parser.parse_args()
