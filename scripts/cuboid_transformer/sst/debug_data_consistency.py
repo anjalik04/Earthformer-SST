@@ -56,13 +56,8 @@ def get_actual_data_for_checkpoint(checkpoint_path: str, cfg_path: str, save_dir
     print("  Setting up datamodule from checkpoint configuration...")
     dataset_cfg = OmegaConf.to_object(model.hparams.dataset)
     # Clean up config for DataModule instantiation
-    safe_keys = [
-        "data_path", "img_size", "in_len", "out_len", "stride", 
-        "batch_size", "num_workers", "pin_memory"
-    ]
-    
-    # Construct the clean config: dataset_cfg = {Intersection of full_cfg and safe_keys}
-    dataset_cfg = {k: full_dataset_cfg[k] for k in safe_keys if k in full_dataset_cfg}
+    for key in ["_target_", "train_start_year", "val_start_year", "test_start_year", "end_year", "filename", "data_dir"]:
+        dataset_cfg.pop(key, None)
     datamodule.setup()
 
     train_loader = datamodule.train_dataloader()
