@@ -3,8 +3,8 @@ Comprehensive inference testing on multiple unseen patches for the
 Earthformer-Earthformer distilled model.
 
 Tests multiple scenarios:
-1. Southward patches with varying overlap (0%, 25%, 50%, 75%, 100%) with last training patch
-2. Westward patches with varying overlap (0%, 25%, 50%, 75%, 100%) with last training patch
+1. Southward patches with varying overlap (0%, 30%, 60%, 90%, 100%) with last training patch
+2. Westward patches with varying overlap (0%, 30%, 60%, 90%, 100%) with last training patch
 3. Random patches: one near training region, one far from training region
 """
 import os
@@ -79,7 +79,7 @@ def compute_southward_patches() -> List[Tuple[str, Tuple[float, float], Tuple[fl
     Returns list of (name, lat_range, lon_range).
     """
     patches = []
-    overlaps = [0, 25, 50, 75, 100]
+    overlaps = [0, 30, 60, 90, 100]
     
     for overlap_pct in overlaps:
         # Calculate stride based on overlap
@@ -109,7 +109,7 @@ def compute_westward_patches() -> List[Tuple[str, Tuple[float, float], Tuple[flo
     Returns list of (name, lat_range, lon_range).
     """
     patches = []
-    overlaps = [0, 25, 50, 75, 100]
+    overlaps = [0, 35, 60, 90, 100]
     
     for overlap_pct in overlaps:
         # Calculate stride based on overlap
