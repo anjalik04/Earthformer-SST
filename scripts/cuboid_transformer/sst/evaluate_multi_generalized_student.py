@@ -50,23 +50,31 @@ def create_sequences(data, in_len, out_len):
     y = torch.from_numpy(sequences[:, in_len:])
     return x, y
 
-def plot_comparison(actuals_denorm, preds_denorm, time_axis, title, save_path, y_ticks, label="Predicted SST"):
+def plot_comparison(actuals_denorm, preds_denorm, time_axis, title, save_path, y_ticks, lat_range, lon_range, label="Predicted SST"):
     try:
         logging.info(f"Saving plot to {save_path}...")
         final_mse = mean_squared_error(actuals_denorm, preds_denorm)
         plt.style.use('seaborn-v0_8-whitegrid')
         fig, ax = plt.subplots(figsize=(20, 8))
+        
         ax.plot(time_axis, actuals_denorm, label='Actual Spatially-Averaged SST', color='blue', linewidth=2)
         ax.plot(time_axis, preds_denorm, label=label, linestyle='--', color='red', alpha=0.9, linewidth=1.5)
-        ax.set_title(f"{title}\nFinal MSE: {final_mse:.4f}", fontsize=16)
+        
+        # --- Range Text on top of the image plot area ---
+        range_str = f"Range: Lat {lat_range[0]:.2f} to {lat_range[1]:.2f} | Lon {lon_range[0]:.2f} to {lon_range[1]:.2f}"
+        ax.text(0.5, 1.05, range_str, transform=ax.transAxes, ha='center', 
+                fontsize=13, fontweight='bold', color='black')
+
+        ax.set_title(f"{title} (MSE: {final_mse:.4f})", fontsize=16, pad=30)
         ax.set_yticks(y_ticks)
         ax.set_xlabel('Date', fontsize=14); ax.set_ylabel('SST (°C)', fontsize=14)
         ax.legend(loc='upper left'); ax.grid(True)
+        
         fig.tight_layout()
         plt.savefig(save_path, dpi=300); plt.close(fig)
     except Exception as e:
         logging.error(f"Error during plotting: {e}")
-
+        
 # --- CHANGE 1: Full Implementation of Pure Ocean Random Patches ---
 def compute_random_patches(ds, seed=42):
     np.random.seed(seed)
@@ -101,26 +109,24 @@ def run_evaluation_for_patch(
     scenario_name, plot_save_dir, device
 ):
     logging.info(f"\n===== Scenario: {scenario_name} =====")
-    patch_height, patch_width = 21, 28
     
-    # --- CHANGE 2: Robust Boundary Indexing ---
-    center_lat_idx = np.abs(ds_full.lat.values - center_lat).argmin()
-    center_lon_idx = np.abs(ds_full.lon.values - center_lon).argmin()
-    start_lat_idx = int(np.clip(center_lat_idx - patch_height // 2, 0, len(ds_full.lat) - patch_height))
-    start_lon_idx = int(np.clip(center_lon_idx - patch_width // 2, 0, len(ds_full.lon) - patch_width))
+    # Define exact boundaries matching Earthformer logic
+    lat_range = (center_lat - 2.5, center_lat + 2.5)
+    lon_range = (center_lon - 3.375, center_lon + 3.375)
     
-    ds_patch_spatial = ds_full.isel(
-        lat=slice(start_lat_idx, start_lat_idx + patch_height), 
-        lon=slice(start_lon_idx, start_lon_idx + patch_width)
+    ds_patch_spatial = ds_full.sel(
+        lat=slice(lat_range[0], lat_range[1]),
+        lon=slice(lon_range[0], lon_range[1])
     )
-
-    # THEN apply the temporal crop
-    ds_new_patch = ds_patch_spatial.sel(time=slice('2021', None))
     
+    ds_new_patch = ds_patch_spatial.sel(time=slice('2021', None))
     new_patch_data_raw = ds_new_patch['sst'].values.astype(np.float32)
     new_patch_data_filled = np.nan_to_num(new_patch_data_raw, nan=mean_original)
-    new_patch_normalized = (new_patch_data_filled - mean_original) / std_original
-    new_patch_normalized = new_patch_normalized[:, np.newaxis, :, :] # (T, 1, H, W)
+    
+    # Resize to match Earthformer's spatial manifold
+    new_patch_resized = _resize_patch(new_patch_data_filled, 21, 28)
+    new_patch_normalized = (new_patch_resized - mean_original) / std_original
+    new_patch_normalized = new_patch_normalized[:, np.newaxis, :, :]
 
     in_len, out_len = hparams.dataset.in_len, hparams.dataset.out_len
     input_seqs, target_seqs = create_sequences(new_patch_normalized, in_len, out_len)
@@ -128,37 +134,32 @@ def run_evaluation_for_patch(
 
     full_loader = DataLoader(TensorDataset(input_seqs, target_seqs), batch_size=16, shuffle=False)
 
-    # --- CHANGE 3: Correct Student Inference Logic ---
-    all_teacher_preds, all_student_preds, all_actuals = [], [], []
+    all_student_preds, all_actuals = [] , []
     with torch.no_grad():
         for x_batch, y_batch in tqdm(full_loader, desc=f"Inference"):
             x_batch, y_batch = x_batch.to(device), y_batch.to(device)
 
-            # Teacher: [B, T, H, W, C]
             teacher_in = x_batch.permute(0, 1, 3, 4, 2)
             teacher_out_raw = teacher_model(teacher_in) 
-            teacher_pred_norm = teacher_out_raw.permute(0, 1, 4, 2, 3) # [B, T, C, H, W]
+            teacher_pred_norm = teacher_out_raw.permute(0, 1, 4, 2, 3) 
 
-            # Student: Consumes Teacher's first output step
-            # Note: We take the teacher's prediction for the first future step
             student_in = teacher_pred_norm[:, 0:1, :, :, :] 
             student_pred_norm = student_model(student_in)
 
-            all_teacher_preds.extend(teacher_pred_norm[:, 0:1].mean(dim=(2,3,4)).cpu().numpy())
             all_student_preds.extend(student_pred_norm.mean(dim=(2,3,4)).cpu().numpy())
             all_actuals.extend(y_batch[:, 0:1].mean(dim=(2,3,4)).cpu().numpy())
 
-    actuals_denorm = (np.array(all_actuals).flatten() * std_original) + mean_original
-    teacher_denorm = (np.array(all_teacher_preds).flatten() * std_original) + mean_original
+    actuals_spatial_avg = new_patch_resized.mean(axis=(1, 2))
+    actuals_denorm = actuals_spatial_avg[in_len : len(all_student_preds) + in_len]
     student_denorm = (np.array(all_student_preds).flatten() * std_original) + mean_original
     
     time_axis = ds_new_patch.get_index("time")[in_len : len(actuals_denorm) + in_len]
     y_ticks = np.arange(np.floor(actuals_denorm.min()), np.ceil(actuals_denorm.max()) + 1, 1.0)
 
-    plot_comparison(actuals_denorm, teacher_denorm, time_axis, f"Teacher: {scenario_name}", 
-                    os.path.join(plot_save_dir, f"teacher_{scenario_name}.png"), y_ticks)
+    # Pass lat_range and lon_range here
     plot_comparison(actuals_denorm, student_denorm, time_axis, f"Student: {scenario_name}", 
-                    os.path.join(plot_save_dir, f"student_{scenario_name}.png"), y_ticks)
+                    os.path.join(plot_save_dir, f"student_{scenario_name}.png"), 
+                    y_ticks, lat_range, lon_range)
 
 def get_args_parser():
     """Parses command line arguments."""
@@ -182,6 +183,28 @@ def get_args_parser():
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
                         help='Device to use for evaluation (cuda or cpu).')
     return parser
+
+def _resize_2d(x: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    """Simple 2D resize using area averaging."""
+    h, w = x.shape
+    scale_h, scale_w = h / target_h, w / target_w
+    out = np.zeros((target_h, target_w), dtype=x.dtype)
+    for i in range(target_h):
+        for j in range(target_w):
+            i0 = int(i * scale_h)
+            i1 = min(int((i + 1) * scale_h), h)
+            j0 = int(j * scale_w)
+            j1 = min(int((j + 1) * scale_w), w)
+            window = x[i0:i1, j0:j1]
+            out[i, j] = np.nanmean(window) if window.size > 0 else x[i0, j0]
+    return out
+
+def _resize_patch(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
+    t, h, w = data.shape
+    out = np.zeros((t, target_h, target_w), dtype=data.dtype)
+    for i in range(t):
+        out[i] = _resize_2d(data[i], target_h, target_w)
+    return out
 
 def main():
     parser = get_args_parser()
