@@ -301,7 +301,7 @@ def load_and_prep_multi_patch_data(args, hparams):
                                 num_workers=args.num_workers, pin_memory=True)
                                 
         ds_full.close()
-        return train_loader, val_loader, None
+        return train_loader, val_loader, None, len(scenarios)
     else:
         raise ValueError(f"Unsupported file format: {args.data_path}. Must be .nc or .pt")
 
@@ -408,7 +408,7 @@ def main(args):
         exit(1)
         
     # --- 2. Setup Data ---
-    train_loader, val_loader, test_loader = load_and_prep_multi_patch_data(args, hparams)
+    train_loader, val_loader, test_loader, num_patches = load_and_prep_multi_patch_data(args, hparams)
     
     logging.info(f"Combined DataLoaders created. Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
     if len(train_loader) == 0:
@@ -420,7 +420,7 @@ def main(args):
     if test_loader is not None:
         total_samples += len(test_loader.dataset)
     samples_per_patch = 2294 
-    num_patches = round(total_samples / samples_per_patch)
+    # num_patches = len(scenarios)
     
     # --- 3. Initialize Student Model (ConvLSTM) ---
     student_model = ConvLSTMStudent(
