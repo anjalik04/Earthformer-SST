@@ -6,13 +6,13 @@
 # =============================================================================
 
 # --- Teacher (pre-trained, frozen) ---
-teacher_ckpt_path: "path/to/teacher/checkpoints/last.ckpt"
-teacher_cfg_path: "path/to/sst.yaml"
+teacher_ckpt_path: "Earthformer-SST/scripts/cuboid_transformer/sst/experiments/sst_colab_run_1/checkpoints/last.ckpt"
+teacher_cfg_path: "Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
 
 # --- Patch Dataset (reuses existing SSTPatchDataModule) ---
 dataset:
   _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
-  data_root: "/path/to/data"
+  data_root: "/kaggle/working/data"
   filename: "sst.week.mean.nc"
   in_len: 12
   out_len: 12
