@@ -16,7 +16,7 @@ dataset:
   filename: "sst.week.mean.nc"
   in_len: 12
   out_len: 12
-  batch_size: 2
+  batch_size: 4
   num_workers: 4
   train_end_year: 2015
   val_end_year: 2020
@@ -55,7 +55,7 @@ kdrl:
 # --- Optimizer ---
 optim:
   total_batch_size: 32
-  micro_batch_size: 2
+  micro_batch_size: 4
   seed: 2022
   method: "adamw"
   lr: 1.0e-4
