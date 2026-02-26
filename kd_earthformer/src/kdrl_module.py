@@ -33,12 +33,12 @@ import pytorch_lightning as pl
 from omegaconf import OmegaConf
 
 # Earthformer imports (Earthformer root is on sys.path)
-from earthformer.cuboid_transformer.cuboid_transformer import CuboidTransformerModel
-from earthformer.utils.optim import SequentialLR, warmup_lambda
-from earthformer.utils.utils import get_parameter_names
+from src.earthformer.cuboid_transformer.cuboid_transformer import CuboidTransformerModel
+from src.earthformer.utils.optim import SequentialLR, warmup_lambda
+from src.earthformer.utils.utils import get_parameter_names
 
 # Local imports (kd_earthformer root is on sys.path)
-from inter_attention_bridge import InterAttentionBridge
+from src.inter_attention_bridge import InterAttentionBridge
 
 # Import teacher module loader
 from scripts.cuboid_transformer.sst.train_cuboid_sst import CuboidSSTPLModule
