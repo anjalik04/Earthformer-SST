@@ -31,8 +31,8 @@ for p in [_KD_ROOT, _EF_ROOT]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from src.earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
-from src.kdrl_module import CuboidKDRLModule
+from earthformer.datasets.sst.sst_patch_datamodule import SSTPatchDataModule
+from kdrl_module import CuboidKDRLModule
 
 
 def get_parser():
