@@ -6,8 +6,8 @@
 # =============================================================================
 
 # --- Teacher (pre-trained, frozen) ---
-teacher_ckpt_path: "Earthformer-SST/scripts/cuboid_transformer/sst/experiments/sst_colab_run_1/checkpoints/last.ckpt"
-teacher_cfg_path: "Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
+teacher_cfg_path: "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
+teacher_ckpt_path: "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/experiments/sst_colab_run_1/checkpoints/last.ckpt"
 
 # --- Patch Dataset (reuses existing SSTPatchDataModule) ---
 dataset:
