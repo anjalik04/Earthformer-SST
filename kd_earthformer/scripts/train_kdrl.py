@@ -143,7 +143,7 @@ def main():
         max_epochs=optim_cfg["max_epochs"],
         check_val_every_n_epoch=oc.trainer.get("check_val_every_n_epoch", 1),
         gradient_clip_val=optim_cfg.get("gradient_clip_val", 1.0),
-        precision=oc.trainer.get("precision", "16"),
+        precision=oc.trainer.get("precision", 16),
         accumulate_grad_batches=accumulate,
         default_root_dir=pl_module.save_dir,
         callbacks=callbacks,
