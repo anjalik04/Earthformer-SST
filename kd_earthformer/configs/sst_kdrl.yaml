@@ -1,0 +1,80 @@
+# =============================================================================
+# KDRL: Earthformer-to-Earthformer Knowledge Distillation with Inter-Attention
+#
+# Joint Training Framework (Eq. 10):
+#   L_joint = α·L_hard + β·L_soft + γ·L_kt
+# =============================================================================
+
+# --- Teacher (pre-trained, frozen) ---
+teacher_ckpt_path: "path/to/teacher/checkpoints/last.ckpt"
+teacher_cfg_path: "path/to/sst.yaml"
+
+# --- Patch Dataset (reuses existing SSTPatchDataModule) ---
+dataset:
+  _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
+  data_root: "/path/to/data"
+  filename: "sst.week.mean.nc"
+  in_len: 12
+  out_len: 12
+  batch_size: 4
+  num_workers: 2
+  train_end_year: 2015
+  val_end_year: 2020
+  # Teacher patch defaults: 15.625–20.625 lat, 65.625–72.375 lon
+  patch_lat_deg: 5.0
+  patch_lon_deg: 6.75
+  stride_lat_deg: 5.0
+  stride_lon_deg: 6.75
+  # Student strides south: 10 patches, 30% overlap
+  student_stride_south: true
+  student_stride_lat_fraction: 0.30
+  student_num_stride_patches: 10
+
+# --- KDRL Configuration ---
+kdrl:
+  # Loss weights (Eq. 10: L = α·L_hard + β·L_soft + γ·L_kt)
+  #   α (alpha_hard): ground truth accuracy — higher = more direct SST learning
+  #   β (beta_soft):  teacher mimicry — higher = more teacher "dark knowledge"
+  #   γ (gamma_kt):   representation alignment — higher = stronger feature matching
+  alpha_hard: 1.0
+  beta_soft: 0.5
+  gamma_kt: 0.5
+
+  # Encoder blocks to bridge (indices into encoder memory list)
+  enc_block_indices: [-2, -1]
+
+  # Whether to also bridge decoder block outputs
+  use_decoder_bridge: true
+
+  # Inter-attention bridge hyperparameters
+  bridge_num_heads: 4
+  bridge_proj_dim: 64
+  bridge_attn_drop: 0.0
+  bridge_proj_drop: 0.0
+
+# --- Optimizer ---
+optim:
+  total_batch_size: 32
+  micro_batch_size: 4
+  seed: 2022
+  method: "adamw"
+  lr: 1.0e-4
+  wd: 0.05
+  gradient_clip_val: 1.0
+  max_epochs: 50
+  warmup_percentage: 0.2
+  warmup_min_lr_ratio: 0.1
+  min_lr_ratio: 0.1
+  save_top_k: 1
+
+# --- Logging ---
+logging:
+  monitor_lr: true
+  monitor_device: false
+
+# --- Trainer ---
+trainer:
+  check_val_every_n_epoch: 1
+  precision: "16-mixed"
+
+seed: 2022
