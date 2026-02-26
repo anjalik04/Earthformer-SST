@@ -279,7 +279,7 @@ class CuboidKDRLModule(pl.LightningModule):
         student_y = student_y.permute(0, 1, 3, 4, 2)
 
         pred = self.student(student_x)
-        if self.trainer.precision == "16":
+        if self.trainer.precision == 16:
             pred = pred.float()
         self.valid_mse(pred, student_y)
         self.valid_mae(pred, student_y)
