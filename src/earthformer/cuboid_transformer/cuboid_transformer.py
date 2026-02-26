@@ -3203,6 +3203,7 @@ class CuboidTransformerModel(nn.Module):
         verbose=False,
         enc_block_indices=None,
         return_dec_pre_proj=True,
+        return_dec_block_outputs=False,
     ):
         """
         Forward pass that also returns intermediate features for distillation.
@@ -3217,6 +3218,9 @@ class CuboidTransformerModel(nn.Module):
             List of encoder memory indices to return (default: last two, i.e. [-2, -1]).
         return_dec_pre_proj
             If True, include decoder output before the final projection.
+        return_dec_block_outputs
+            If True, include per-block decoder intermediate outputs for
+            inter-attention bridging (KDRL).
 
         Returns
         -------
@@ -3226,6 +3230,7 @@ class CuboidTransformerModel(nn.Module):
             Dict with keys:
             - "enc_mem_l": list of tensors, selected encoder block outputs.
             - "dec_pre_proj": decoder output before dec_final_proj, or None.
+            - "dec_block_outputs": list of per-block decoder intermediates, or None.
             - "mem_l": full list of encoder memories (for custom indexing).
         """
         if enc_block_indices is None:
@@ -3245,10 +3250,22 @@ class CuboidTransformerModel(nn.Module):
                 print(f"mem[{i}].shape = {mem.shape}")
         initial_z = self.get_initial_z(final_mem=mem_l[-1],
                                        T_out=T_out)
-        if self.num_global_vectors > 0:
-            dec_out = self.decoder(initial_z, mem_l, mem_global_vector_l)
+
+        # Decoder: optionally collect per-block intermediates for KDRL bridging
+        if return_dec_block_outputs:
+            if self.num_global_vectors > 0:
+                dec_out, dec_block_outputs = self._decoder_with_block_outputs(
+                    initial_z, mem_l, mem_global_vector_l)
+            else:
+                dec_out, dec_block_outputs = self._decoder_with_block_outputs(
+                    initial_z, mem_l)
         else:
-            dec_out = self.decoder(initial_z, mem_l)
+            if self.num_global_vectors > 0:
+                dec_out = self.decoder(initial_z, mem_l, mem_global_vector_l)
+            else:
+                dec_out = self.decoder(initial_z, mem_l)
+            dec_block_outputs = None
+
         dec_pre_proj = dec_out
         dec_out = self.final_decoder(dec_out)
         out = self.dec_final_proj(dec_out)
@@ -3256,6 +3273,65 @@ class CuboidTransformerModel(nn.Module):
         features = {
             "enc_mem_l": enc_selected,
             "dec_pre_proj": dec_pre_proj if return_dec_pre_proj else None,
+            "dec_block_outputs": dec_block_outputs,
             "mem_l": mem_l,
         }
         return out, features
+
+    def _decoder_with_block_outputs(self, x, mem_l, mem_global_vector_l=None):
+        """Run the decoder while collecting per-block intermediate outputs.
+
+        This mirrors ``self.decoder.forward()`` but saves `x` after each
+        block (including upsample) for use as inter-attention bridge targets.
+
+        Returns
+        -------
+        x : Tensor
+            Final decoder output (same as ``self.decoder(x, mem_l, ...)``)
+        block_outputs : list[Tensor]
+            One tensor per decoder block, in processing order (deepest first).
+        """
+        dec = self.decoder
+        B, T_top, H_top, W_top, C = x.shape
+        block_outputs = []
+        for i in range(dec.num_blocks - 1, -1, -1):
+            mem_global_vector = (
+                None if mem_global_vector_l is None else mem_global_vector_l[i]
+            )
+            if not dec.use_first_self_attn and i == dec.num_blocks - 1:
+                if i >= dec.cross_start:
+                    x = dec.cross_blocks[i - dec.cross_start][0](
+                        x, mem_l[i], mem_global_vector)
+                for idx in range(dec.depth[i] - 1):
+                    if dec.use_self_global:
+                        if dec.self_update_global:
+                            x, mem_global_vector = dec.self_blocks[i][idx](
+                                x, mem_global_vector)
+                        else:
+                            x, _ = dec.self_blocks[i][idx](x, mem_global_vector)
+                    else:
+                        x = dec.self_blocks[i][idx](x)
+                    if i >= dec.cross_start:
+                        x = dec.cross_blocks[i - dec.cross_start][idx + 1](
+                            x, mem_l[i], mem_global_vector)
+            else:
+                for idx in range(dec.depth[i]):
+                    if dec.use_self_global:
+                        if dec.self_update_global:
+                            x, mem_global_vector = dec.self_blocks[i][idx](
+                                x, mem_global_vector)
+                        else:
+                            x, _ = dec.self_blocks[i][idx](x, mem_global_vector)
+                    else:
+                        x = dec.self_blocks[i][idx](x)
+                    if i >= dec.cross_start:
+                        x = dec.cross_blocks[i - dec.cross_start][idx](
+                            x, mem_l[i], mem_global_vector)
+            # Upsample
+            if i > 0:
+                x = dec.upsample_layers[i - 1](x)
+                if dec.hierarchical_pos_embed:
+                    x = dec.hierarchical_pos_embed_l[i - 1](x)
+            # Collect this block's output
+            block_outputs.append(x.clone())
+        return x, block_outputs
