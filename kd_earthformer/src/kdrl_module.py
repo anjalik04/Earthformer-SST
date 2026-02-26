@@ -195,6 +195,7 @@ class CuboidKDRLModule(pl.LightningModule):
         # --- Metrics ---
         self.valid_mse = torchmetrics.MeanSquaredError()
         self.valid_mae = torchmetrics.MeanAbsoluteError()
+        self.valid_mape = torchmetrics.MeanAbsolutePercentageError()
 
     def _forward_with_features(self, x, model):
         """Forward through a model with feature extraction for KDRL.
@@ -283,9 +284,21 @@ class CuboidKDRLModule(pl.LightningModule):
         self.valid_mse(pred, student_y)
         self.valid_mae(pred, student_y)
 
+        mean = self.trainer.datamodule.mean
+        std = self.trainer.datamodule.std
+
+        pred_c = (pred * std) + mean
+        target_c = (student_y * std) + mean
+        self.valid_mape(pred_c + 273.15, target_c + 273.15)
+
     def on_validation_epoch_end(self):
+        mse = self.valid_mse.compute()
+        mae = self.valid_mae.compute()
+        mape = self.valid_mape.compute()
+        accuracy = (1.0 - mape) * 100
         self.log("valid_mse_epoch", self.valid_mse.compute(), prog_bar=True, on_epoch=True)
         self.log("valid_mae_epoch", self.valid_mae.compute(), prog_bar=True, on_epoch=True)
+        self.log("valid_accuracy", accuracy, prog_bar=True, on_epoch=True)
         self.valid_mse.reset()
         self.valid_mae.reset()
 
