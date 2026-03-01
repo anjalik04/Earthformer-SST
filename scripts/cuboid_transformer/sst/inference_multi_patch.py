@@ -138,130 +138,30 @@ def compute_westward_patches() -> List[Tuple[str, Tuple[float, float], Tuple[flo
     
     return patches
 
-
-def compute_random_patches(ds: xr.Dataset, seed: int = 42) -> List[Tuple[str, Tuple[float, float], Tuple[float, float]]]:
+def compute_random_patches(ds: xr.Dataset = None, seed: int = 42) -> List[Tuple[str, Tuple[float, float], Tuple[float, float]]]:
     """
-    Compute two random test patches:
-    1. Near training region (within ±10 degrees of training patches)
-    2. Far from training region (>20 degrees away)
-    
-    Returns list of (name, lat_range, lon_range).
+    Returns the two fixed test patches with explicit bounds.
+    1. Random Near: Centered at 10.87, 70.38 (Lat: 8.37 to 13.37, Lon: 67.005 to 73.755)
+    2. Random Far: Fixed bounds Lat: -25.32 to -20.32, Lon: 110.94 to 117.69
     """
-    np.random.seed(seed)
     patches = []
     
-    # Training region center
-    train_lat_center = (TEACHER_LAT[0] + LAST_PATCH_LAT[0]) / 2 + PATCH_LAT_DEG / 2
-    train_lon_center = (TEACHER_LON[0] + TEACHER_LON[1]) / 2
+    # --- Patch 1: Fixed Near (Centered at 10.87, 70.38) ---
+    # Latitude:  10.87 - 2.5 = 8.37  | 10.87 + 2.5 = 13.37
+    # Longitude: 70.38 - 3.375 = 67.005 | 70.38 + 3.375 = 73.755
+    p1_lat = (8.37, 13.37)
+    p1_lon = (67.005, 73.755)
+    patches.append(("random_near", p1_lat, p1_lon))
 
-    def is_pure_ocean(lat_rng, lon_rng):
-        sample = ds["sst"].isel(time=0).sel(
-            lat=slice(*lat_rng), 
-            lon=slice(*lon_rng)
-        ).values
-        return not np.any(np.isnan(sample))
-        
-    found_near = False
-    max_attempts = 100
-    attempts = 0
-    
-    while not found_near and attempts < max_attempts:
-        near_lat_offset = np.random.uniform(-10, 10)
-        near_lon_offset = np.random.uniform(-10, 10)
-        
-        near_lat_start = train_lat_center + near_lat_offset
-        near_lon_start = train_lon_center + near_lon_offset
-        
-        # Ensure within global bounds
-        near_lat_start = max(MIN_LAT, min(MAX_LAT - PATCH_LAT_DEG, near_lat_start))
-        near_lon_start = max(MIN_LON, min(MAX_LON - PATCH_LON_DEG, near_lon_start))
-        
-        lats = (near_lat_start, near_lat_start + PATCH_LAT_DEG)
-        lons = (near_lon_start, near_lon_start + PATCH_LON_DEG)
+    # --- Patch 2: Fixed Far (Australian/Indian Ocean Region) ---
+    p2_lat = (-25.32, -20.32)
+    p2_lon = (110.94, 117.69)
+    patches.append(("random_far", p2_lat, p2_lon))
 
-        if is_pure_ocean(lats, lons):
-            patches.append(("random_near", lats, lons))
-            found_near = True
-            print(f"  [Random] Selected 'near' patch after {attempts+1} attempts.")
-        attempts += 1
-
-    # --- CHANGE 3: Scenario 2 - Random Far with Validation Loop ---
-    found_far = False
-    attempts = 0
-    far_directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
-    
-    while not found_far and attempts < max_attempts:
-        dir_lat, dir_lon = far_directions[np.random.randint(0, 4)]
-        
-        # Using a larger offset (25-50 degrees) to ensure it's truly "Far"
-        far_lat_offset = np.random.uniform(25, 50) * dir_lat
-        far_lon_offset = np.random.uniform(30, 60) * dir_lon
-        
-        far_lat_start = train_lat_center + far_lat_offset
-        far_lon_start = train_lon_center + far_lon_offset
-        
-        far_lat_start = max(MIN_LAT, min(MAX_LAT - PATCH_LAT_DEG, far_lat_start))
-        far_lon_start = max(MIN_LON, min(MAX_LON - PATCH_LON_DEG, far_lon_start))
-        
-        lats = (far_lat_start, far_lat_start + PATCH_LAT_DEG)
-        lons = (far_lon_start, far_lon_start + PATCH_LON_DEG)
-
-        if is_pure_ocean(lats, lons):
-            patches.append(("random_far", lats, lons))
-            found_far = True
-            print(f"  [Random] Selected 'far' patch after {attempts+1} attempts.")
-        attempts += 1
-    # # Random patch near training region
-    # near_lat_offset = np.random.uniform(-10, 10)
-    # near_lon_offset = np.random.uniform(-10, 10)
-    # near_lat_start = train_lat_center + near_lat_offset
-    # near_lat_end = near_lat_start + PATCH_LAT_DEG
-    # near_lon_start = train_lon_center + near_lon_offset
-    # near_lon_end = near_lon_start + PATCH_LON_DEG
-    
-    # # Ensure within bounds
-    # near_lat_start = max(MIN_LAT, min(MAX_LAT - PATCH_LAT_DEG, near_lat_start))
-    # near_lat_end = near_lat_start + PATCH_LAT_DEG
-    # near_lon_start = max(MIN_LON, min(MAX_LON - PATCH_LON_DEG, near_lon_start))
-    # near_lon_end = near_lon_start + PATCH_LON_DEG
-    
-    # patches.append((
-    #     "random_near",
-    #     (near_lat_start, near_lat_end),
-    #     (near_lon_start, near_lon_end)
-    # ))
-    
-    # # Random patch far from training region
-    # # Pick a random quadrant far away
-    # far_directions = [
-    #     (1, 1),   # NE
-    #     (1, -1),  # NW
-    #     (-1, 1),  # SE
-    #     (-1, -1)  # SW
-    # ]
-    # dir_lat, dir_lon = far_directions[np.random.randint(0, 4)]
-    
-    # far_lat_offset = np.random.uniform(25, 40) * dir_lat
-    # far_lon_offset = np.random.uniform(30, 50) * dir_lon
-    # far_lat_start = train_lat_center + far_lat_offset
-    # far_lat_end = far_lat_start + PATCH_LAT_DEG
-    # far_lon_start = train_lon_center + far_lon_offset
-    # far_lon_end = far_lon_start + PATCH_LON_DEG
-    
-    # # Ensure within bounds
-    # far_lat_start = max(MIN_LAT, min(MAX_LAT - PATCH_LAT_DEG, far_lat_start))
-    # far_lat_end = far_lat_start + PATCH_LAT_DEG
-    # far_lon_start = max(MIN_LON, min(MAX_LON - PATCH_LON_DEG, far_lon_start))
-    # far_lon_end = far_lon_start + PATCH_LON_DEG
-    
-    # patches.append((
-    #     "random_far",
-    #     (far_lat_start, far_lat_end),
-    #     (far_lon_start, far_lon_end)
-    # ))
+    print(f"  [Fixed Patches] 'near' bounds: Lat {p1_lat}, Lon {p1_lon}")
+    print(f"  [Fixed Patches] 'far'  bounds: Lat {p2_lat}, Lon {p2_lon}")
     
     return patches
-
 
 def run_inference_on_patch(
     student: torch.nn.Module,
