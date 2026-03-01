@@ -337,6 +337,7 @@ def main():
         teacher_ckpt_path=teacher_ckpt,
         oc_file=teacher_cfg_path,
         save_dir=os.path.dirname(os.path.dirname(args.ckpt)),
+        strice=False
     )
     student = pl_module.student.to(device).eval()
 
