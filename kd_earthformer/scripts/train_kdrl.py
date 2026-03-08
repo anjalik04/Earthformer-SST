@@ -167,7 +167,7 @@ def main():
         accumulate_grad_batches=accumulate,
         default_root_dir=pl_module.save_dir,
         callbacks=callbacks,
-        log_every_n_steps=max(1, int(0.01 * dm.train_dataset.length / micro_batch)),
+        log_every_n_steps=100,
     )
 
     # --- Resume from checkpoint if specified ---
