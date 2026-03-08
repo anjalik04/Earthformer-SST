@@ -33,16 +33,16 @@ class LossPrinter(pl.Callback):
             print(f"\nEpoch {trainer.current_epoch} | Step {batch_idx} | loss: {loss:.6f}", flush=True)
 
     def on_validation_epoch_end(self, trainer, pl_module):
-    metrics = trainer.callback_metrics
-    val_mse = metrics.get("valid_mse_epoch", None)
-    val_mae = metrics.get("valid_mae_epoch", None)
-    if val_mse is None or val_mae is None:
-        return  # skip sanity check / not yet available
-    if isinstance(val_mse, torch.Tensor):
-        val_mse = val_mse.item()
-    if isinstance(val_mae, torch.Tensor):
-        val_mae = val_mae.item()
-    print(f"\n>>> Validation | Epoch {trainer.current_epoch} | valid_mse: {val_mse:.6f} | valid_mae: {val_mae:.6f}", flush=True)
+        metrics = trainer.callback_metrics
+        val_mse = metrics.get("valid_mse_epoch", None)
+        val_mae = metrics.get("valid_mae_epoch", None)
+        if val_mse is None or val_mae is None:
+            return  # skip sanity check / not yet available
+        if isinstance(val_mse, torch.Tensor):
+            val_mse = val_mse.item()
+        if isinstance(val_mae, torch.Tensor):
+            val_mae = val_mae.item()
+        print(f"\n>>> Validation | Epoch {trainer.current_epoch} | valid_mse: {val_mse:.6f} | valid_mae: {val_mae:.6f}", flush=True)
     
 # --- Ensure Earthformer root and kd_earthformer root are on path ---
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
