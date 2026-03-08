@@ -23,6 +23,25 @@ from omegaconf import OmegaConf
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
+import pytorch_lightning as pl
+
+class LossPrinter(pl.Callback):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if batch_idx % 100 == 0:
+            metrics = trainer.callback_metrics
+            loss = metrics.get("train_loss", metrics.get("loss", "N/A"))
+            print(f"\nEpoch {trainer.current_epoch} | Step {batch_idx} | loss: {loss:.6f}", flush=True)
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        metrics = trainer.callback_metrics
+        val_mse = metrics.get("valid_mse_epoch", "N/A")
+        val_mae = metrics.get("valid_mae_epoch", "N/A")
+        if isinstance(val_mse, torch.Tensor):
+            val_mse = val_mse.item()
+        if isinstance(val_mae, torch.Tensor):
+            val_mae = val_mae.item()
+        print(f"\n>>> Validation | Epoch {trainer.current_epoch} | valid_mse: {val_mse:.6f} | valid_mae: {val_mae:.6f}", flush=True)
+
 # --- Ensure Earthformer root and kd_earthformer root are on path ---
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _KD_ROOT = os.path.abspath(os.path.join(_THIS_DIR, ".."))
@@ -133,7 +152,7 @@ def main():
         save_last=True,
         mode="min",
     )
-    callbacks = [checkpoint_callback]
+    callbacks = [checkpoint_callback, LossPrinter()]
     if oc.logging.get("monitor_lr", True):
         callbacks.append(LearningRateMonitor(logging_interval="step"))
 
