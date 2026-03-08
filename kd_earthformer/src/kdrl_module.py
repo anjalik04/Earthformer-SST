@@ -195,7 +195,6 @@ class CuboidKDRLModule(pl.LightningModule):
         # --- Metrics ---
         self.valid_mse = torchmetrics.MeanSquaredError()
         self.valid_mae = torchmetrics.MeanAbsoluteError()
-        self.valid_mape = torchmetrics.MeanAbsolutePercentageError()
 
     def _forward_with_features(self, x, model):
         """Forward through a model with feature extraction for KDRL.
@@ -248,7 +247,10 @@ class CuboidKDRLModule(pl.LightningModule):
         loss_hard = F.mse_loss(student_pred, student_y)
 
         # --- L_soft: student prediction vs teacher prediction (soft labels) ---
-        loss_soft = F.mse_loss(student_pred, teacher_pred)
+        # REMOVED: Since teacher and student are operating on different spatial patches,
+        # forcing their physical temperature predictions (L_soft) to match directly
+        # leads to incorrect learning. The distillation occurs purely through L_kt (internal features).
+        loss_soft = torch.tensor(0.0, device=student_pred.device, requires_grad=True)
 
         # --- L_kt: inter-attention bridge loss ---
         loss_kt = self.bridge(
@@ -267,9 +269,9 @@ class CuboidKDRLModule(pl.LightningModule):
 
         # Log all components
         self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=True)
-        self.log("train_hard_loss", loss_hard, on_step=True, on_epoch=False)
-        self.log("train_soft_loss", loss_soft, on_step=True, on_epoch=False)
-        self.log("train_kt_loss", loss_kt, on_step=True, on_epoch=False)
+        self.log("train_hard_loss", loss_hard, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train_soft_loss", loss_soft, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train_kt_loss", loss_kt, on_step=True, on_epoch=False, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -279,26 +281,14 @@ class CuboidKDRLModule(pl.LightningModule):
         student_y = student_y.permute(0, 1, 3, 4, 2)
 
         pred = self.student(student_x)
-        if self.trainer.precision == 16:
+        if self.trainer.precision == "16-mixed":
             pred = pred.float()
         self.valid_mse(pred, student_y)
         self.valid_mae(pred, student_y)
 
-        mean = self.trainer.datamodule.mean
-        std = self.trainer.datamodule.std
-
-        pred_c = (pred * std) + mean
-        target_c = (student_y * std) + mean
-        self.valid_mape(pred_c + 273.15, target_c + 273.15)
-
     def on_validation_epoch_end(self):
-        mse = self.valid_mse.compute()
-        mae = self.valid_mae.compute()
-        mape = self.valid_mape.compute()
-        accuracy = (1.0 - mape) * 100
         self.log("valid_mse_epoch", self.valid_mse.compute(), prog_bar=True, on_epoch=True)
         self.log("valid_mae_epoch", self.valid_mae.compute(), prog_bar=True, on_epoch=True)
-        self.log("valid_accuracy", accuracy, prog_bar=True, on_epoch=True)
         self.valid_mse.reset()
         self.valid_mae.reset()
 
