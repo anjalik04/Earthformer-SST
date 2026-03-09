@@ -234,12 +234,16 @@ class CuboidKDRLModule(pl.LightningModule):
         student_x = student_x.permute(0, 1, 3, 4, 2)
         student_y = student_y.permute(0, 1, 3, 4, 2)
 
-        # --- Teacher forward (frozen, no grad) ---
+        # teacher pass (frozen, no grad)
         with torch.no_grad():
-            teacher_pred, teacher_enc_feats, teacher_dec_feats = \
+            # 1. Extract guiding features from teacher's native domain for the Bridge
+            _, teacher_enc_feats, teacher_dec_feats = \
                 self._forward_with_features(teacher_x, self.teacher)
+            
+            # 2. Extract soft labels from teacher on student's domain
+            teacher_pred = self.teacher(student_x)
 
-        # --- Student forward ---
+        # student pass
         student_pred, student_enc_feats, student_dec_feats = \
             self._forward_with_features(student_x, self.student)
 
@@ -247,10 +251,7 @@ class CuboidKDRLModule(pl.LightningModule):
         loss_hard = F.mse_loss(student_pred, student_y)
 
         # --- L_soft: student prediction vs teacher prediction (soft labels) ---
-        # REMOVED: Since teacher and student are operating on different spatial patches,
-        # forcing their physical temperature predictions (L_soft) to match directly
-        # leads to incorrect learning. The distillation occurs purely through L_kt (internal features).
-        loss_soft = torch.tensor(0.0, device=student_pred.device, requires_grad=True)
+        loss_soft = F.mse_loss(student_pred, teacher_pred)
 
         # --- L_kt: inter-attention bridge loss ---
         loss_kt = self.bridge(
@@ -268,7 +269,7 @@ class CuboidKDRLModule(pl.LightningModule):
         )
 
         # Log all components
-        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train_hard_loss", loss_hard, on_step=True, on_epoch=False, prog_bar=True)
         self.log("train_soft_loss", loss_soft, on_step=True, on_epoch=False, prog_bar=True)
         self.log("train_kt_loss", loss_kt, on_step=True, on_epoch=False, prog_bar=True)
