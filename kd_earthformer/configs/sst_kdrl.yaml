@@ -58,7 +58,7 @@ optim:
   micro_batch_size: 2
   seed: 2022
   method: "adamw"
-  lr: 1.0e-4
+  lr: 0.08e-4
   wd: 0.05
   gradient_clip_val: 1.0
   max_epochs: 50
