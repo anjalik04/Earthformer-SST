@@ -1,6 +1,6 @@
 """
 Entry-point script for KDRL training (Earthformer-to-Earthformer with
-inter-attention knowledge distillation).
+corrected inter-attention knowledge distillation + direct feature MSE).
 
 Usage:
     cd c:\\Users\\tmoitra\\Work\\sst_rnd\\Earthformer
@@ -22,26 +22,6 @@ import torch
 from omegaconf import OmegaConf
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-
-import pytorch_lightning as pl
-
-class LossPrinter(pl.Callback):
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if batch_idx % 100 == 0:
-            metrics = trainer.callback_metrics
-            loss = metrics.get("train_loss", metrics.get("loss", "N/A"))
-            print(f"\nEpoch {trainer.current_epoch} | Step {batch_idx} | loss: {loss:.6f}", flush=True)
-
-    def on_validation_epoch_end(self, trainer, pl_module):
-        metrics = trainer.callback_metrics
-        if not metrics:
-            return
-        parts = []
-        for k, v in metrics.items():
-            if isinstance(v, torch.Tensor):
-                v = v.item()
-            parts.append(f"{k}: {v:.6f}")
-        print(f"\n>>> Validation End | Epoch {trainer.current_epoch} | " + " | ".join(parts), flush=True)
 
 # --- Ensure Earthformer root and kd_earthformer root are on path ---
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,8 +108,8 @@ def main():
         oc_file=teacher_cfg_path,
         save_dir=args.save,
         alpha_hard=float(kdrl_cfg.get("alpha_hard", 1.0)),
-        beta_soft=float(kdrl_cfg.get("beta_soft", 0.5)),
-        gamma_kt=float(kdrl_cfg.get("gamma_kt", 0.5)),
+        beta_feat=float(kdrl_cfg.get("beta_feat", 1.0)),
+        gamma_bridge=float(kdrl_cfg.get("gamma_bridge", 0.3)),
         enc_block_indices=list(kdrl_cfg.get("enc_block_indices", [-2, -1])),
         use_decoder_bridge=bool(kdrl_cfg.get("use_decoder_bridge", True)),
         bridge_num_heads=int(kdrl_cfg.get("bridge_num_heads", 4)),
@@ -153,7 +133,7 @@ def main():
         save_last=True,
         mode="min",
     )
-    callbacks = [checkpoint_callback, LossPrinter()]
+    callbacks = [checkpoint_callback]
     if oc.logging.get("monitor_lr", True):
         callbacks.append(LearningRateMonitor(logging_interval="step"))
 
@@ -163,7 +143,7 @@ def main():
         max_epochs=optim_cfg["max_epochs"],
         check_val_every_n_epoch=oc.trainer.get("check_val_every_n_epoch", 1),
         gradient_clip_val=optim_cfg.get("gradient_clip_val", 1.0),
-        precision=oc.trainer.get("precision", 16),
+        precision=oc.trainer.get("precision", "16-mixed"),
         accumulate_grad_batches=accumulate,
         default_root_dir=pl_module.save_dir,
         callbacks=callbacks,
