@@ -20,8 +20,8 @@ dataset:
   filename: "sst.week.mean.nc"
   in_len: 12
   out_len: 12
-  batch_size: 4
-  num_workers: 2
+  batch_size: 2
+  num_workers: 4
   train_end_year: 2015
   val_end_year: 2016
   # Teacher patch defaults: 15.625–20.625 lat, 65.625–72.375 lon
