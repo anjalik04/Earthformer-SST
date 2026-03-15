@@ -1,13 +1,16 @@
 """
 CuboidKDRLModule — PyTorch Lightning module for KDRL Earthformer-to-Earthformer
-knowledge distillation with inter-attention bridging.
+knowledge distillation with inter-attention bridging + direct feature MSE.
 
-Implements the Joint Training Framework (Section V, Eq. 10):
-    L_joint = α·L_hard(student_pred, ground_truth)
-            + β·L_soft(student_pred, teacher_pred)
-            + γ·L_kt(teacher_feats, student_feats)
+Corrected Joint Loss:
+    L = α·L_hard  (student prediction vs ground truth)
+      + β·L_feat  (direct feature MSE — proven baseline mechanism)
+      + γ·L_bridge (corrected inter-attention bridge — teacher-anchored target)
 
-where L_kt uses the InterAttentionBridge for encoder + decoder features.
+L_feat provides a strong, stable gradient signal (proven to work in
+train_cuboid_sst_distill.py). L_bridge adds learned semantic alignment on top.
+L_soft (teacher on foreign patches) has been REMOVED — it produced noisy,
+unreliable targets that degraded learning.
 """
 import os
 import sys
@@ -116,7 +119,13 @@ def _get_decoder_block_dims(model: CuboidTransformerModel) -> List[int]:
 class CuboidKDRLModule(pl.LightningModule):
     """Lightning module for KDRL Earthformer-to-Earthformer distillation.
 
-    Joint loss: L = α·L_hard + β·L_soft + γ·L_kt
+    Corrected joint loss:
+        L = α·L_hard + β·L_feat + γ·L_bridge
+
+    where:
+        L_hard   = MSE(student_pred, ground_truth)
+        L_feat   = direct feature MSE (encoder memories + decoder pre-proj)
+        L_bridge = corrected inter-attention bridge (teacher-anchored target)
     """
 
     def __init__(
@@ -124,10 +133,10 @@ class CuboidKDRLModule(pl.LightningModule):
         teacher_ckpt_path: str,
         oc_file: str,
         save_dir: str,
-        # KDRL loss weights (Eq. 10)
+        # Loss weights
         alpha_hard: float = 1.0,
-        beta_soft: float = 0.5,
-        gamma_kt: float = 0.5,
+        beta_feat: float = 1.0,
+        gamma_bridge: float = 0.3,
         # Bridge config
         enc_block_indices: Optional[List[int]] = None,
         use_decoder_bridge: bool = True,
@@ -141,8 +150,8 @@ class CuboidKDRLModule(pl.LightningModule):
             enc_block_indices = [-2, -1]
 
         self.alpha_hard = alpha_hard
-        self.beta_soft = beta_soft
-        self.gamma_kt = gamma_kt
+        self.beta_feat = beta_feat
+        self.gamma_bridge = gamma_bridge
         self.enc_block_indices = enc_block_indices
         self.use_decoder_bridge = use_decoder_bridge
         self.save_dir = save_dir
@@ -210,10 +219,8 @@ class CuboidKDRLModule(pl.LightningModule):
         -------
         out : Tensor
             Prediction (B, T_out, H, W, C_out).
-        enc_feats : list of Tensor
-            Selected encoder block outputs.
-        dec_feats : list of Tensor or None
-            Decoder block outputs (if use_decoder_bridge).
+        features : dict
+            Dict with keys: 'enc_mem_l', 'dec_pre_proj', 'dec_block_outputs', 'mem_l'.
         """
         out, features = model.forward_with_features(
             x,
@@ -221,12 +228,57 @@ class CuboidKDRLModule(pl.LightningModule):
             return_dec_pre_proj=True,
             return_dec_block_outputs=self.use_decoder_bridge,
         )
-        enc_feats = features["enc_mem_l"]
-        dec_feats = features.get("dec_block_outputs", None)
-        return out, enc_feats, dec_feats
+        return out, features
+
+    def _compute_feature_loss(self, teacher_feats, student_feats):
+        """Direct feature MSE between teacher/student encoder memories + dec_pre_proj.
+
+        This is the proven distillation mechanism from train_cuboid_sst_distill.py,
+        adapted inline for the KDRL module.
+
+        Parameters
+        ----------
+        teacher_feats : dict
+            Features from teacher's forward_with_features().
+        student_feats : dict
+            Features from student's forward_with_features().
+
+        Returns
+        -------
+        loss_enc : Tensor
+            Sum of MSE losses over selected encoder block memories.
+        loss_dec : Tensor
+            MSE loss on decoder pre-projection features.
+        """
+        loss_enc = torch.tensor(0.0, device=self.device)
+        for te, st in zip(teacher_feats["enc_mem_l"], student_feats["enc_mem_l"]):
+            if te.shape != st.shape:
+                # Interpolate student to match teacher spatial dims
+                st = F.interpolate(
+                    st.permute(0, 4, 1, 2, 3),
+                    size=(te.shape[1], te.shape[2], te.shape[3]),
+                    mode="trilinear",
+                    align_corners=False,
+                ).permute(0, 2, 3, 4, 1)
+            loss_enc = loss_enc + F.mse_loss(st, te)
+
+        loss_dec = torch.tensor(0.0, device=self.device)
+        td = teacher_feats.get("dec_pre_proj")
+        sd = student_feats.get("dec_pre_proj")
+        if td is not None and sd is not None:
+            if td.shape != sd.shape:
+                sd = F.interpolate(
+                    sd.permute(0, 4, 1, 2, 3),
+                    size=(td.shape[1], td.shape[2], td.shape[3]),
+                    mode="trilinear",
+                    align_corners=False,
+                ).permute(0, 2, 3, 4, 1)
+            loss_dec = F.mse_loss(sd, td)
+
+        return loss_enc, loss_dec
 
     def training_step(self, batch, batch_idx):
-        """Joint training step: L = α·L_hard + β·L_soft + γ·L_kt"""
+        """Corrected training step: L = α·L_hard + β·L_feat + γ·L_bridge"""
         teacher_x, teacher_y, student_x, student_y, _ = batch
 
         # Permute to Earthformer layout: (B, T, C, H, W) → (B, T, H, W, C)
@@ -234,45 +286,46 @@ class CuboidKDRLModule(pl.LightningModule):
         student_x = student_x.permute(0, 1, 3, 4, 2)
         student_y = student_y.permute(0, 1, 3, 4, 2)
 
-        # teacher pass (frozen, no grad)
+        # Teacher pass (frozen, no grad) — features from teacher's native domain
         with torch.no_grad():
-            # 1. Extract guiding features from teacher's native domain for the Bridge
-            _, teacher_enc_feats, teacher_dec_feats = \
-                self._forward_with_features(teacher_x, self.teacher)
-            
-            # 2. Extract soft labels from teacher on student's domain
-            teacher_pred = self.teacher(student_x)
+            _, teacher_feats = self._forward_with_features(teacher_x, self.teacher)
 
-        # student pass
-        student_pred, student_enc_feats, student_dec_feats = \
-            self._forward_with_features(student_x, self.student)
+        # Student pass — prediction + features for both L_feat and L_bridge
+        student_pred, student_feats = self._forward_with_features(student_x, self.student)
 
         # --- L_hard: student prediction vs ground truth ---
         loss_hard = F.mse_loss(student_pred, student_y)
 
-        # --- L_soft: student prediction vs teacher prediction (soft labels) ---
-        loss_soft = F.mse_loss(student_pred, teacher_pred)
+        # --- L_feat: direct feature MSE (proven baseline mechanism) ---
+        loss_feat_enc, loss_feat_dec = self._compute_feature_loss(teacher_feats, student_feats)
+        loss_feat = loss_feat_enc + loss_feat_dec
 
-        # --- L_kt: inter-attention bridge loss ---
-        loss_kt = self.bridge(
+        # --- L_bridge: corrected inter-attention bridge (teacher-anchored) ---
+        teacher_enc_feats = teacher_feats["enc_mem_l"]
+        student_enc_feats = student_feats["enc_mem_l"]
+        teacher_dec_feats = teacher_feats.get("dec_block_outputs")
+        student_dec_feats = student_feats.get("dec_block_outputs")
+
+        loss_bridge = self.bridge(
             teacher_enc_feats=teacher_enc_feats,
             student_enc_feats=student_enc_feats,
             teacher_dec_feats=teacher_dec_feats,
             student_dec_feats=student_dec_feats,
         )
 
-        # --- Joint loss (Eq. 10) ---
+        # --- Joint loss ---
         loss = (
             self.alpha_hard * loss_hard
-            + self.beta_soft * loss_soft
-            + self.gamma_kt * loss_kt
+            + self.beta_feat * loss_feat
+            + self.gamma_bridge * loss_bridge
         )
 
         # Log all components
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train_hard_loss", loss_hard, on_step=True, on_epoch=False, prog_bar=True)
-        self.log("train_soft_loss", loss_soft, on_step=True, on_epoch=False, prog_bar=True)
-        self.log("train_kt_loss", loss_kt, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train_feat_enc", loss_feat_enc, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train_feat_dec", loss_feat_dec, on_step=True, on_epoch=False, prog_bar=True)
+        self.log("train_bridge_loss", loss_bridge, on_step=True, on_epoch=False, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
