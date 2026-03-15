@@ -4,12 +4,13 @@ Inter-Attention Bridge for KDRL (Knowledge Distillation-based Representation Lea
 Implements cross-attention modules that bridge teacher and student Earthformer
 internal representations at selected encoder and decoder block outputs.
 
-The bridge computes L_kt (Eq. 7 in the KDRL paper):
-    L_kt = || u_t(x_t; Θ_t) − u_s(x_s; Θ_s) ||
+The bridge computes L_bridge (teacher-anchored):
+    L_bridge = MSE( out_proj(Attn(Q_student, K_teacher, V_teacher)),
+                    teacher_ref_proj(teacher).detach() )
 
-where u_t and u_s are the teacher/student transform functions at selected layers,
-and the inter-attention mechanism aligns the representations before computing
-the distance.
+The target is a FROZEN projection of the teacher features. Gradients only
+flow through the student's Q projections and the bridge attention — the
+student cannot game the loss by collapsing projections.
 """
 import torch
 import torch.nn as nn
@@ -23,10 +24,10 @@ class InterAttentionLayer(nn.Module):
     Given teacher feature t and student feature s, both of shape (B, T, H, W, C):
       - Project s → Q, t → K, V
       - Compute multi-head cross-attention: attn_out = Attn(Q_s, K_t, V_t)
-      - L_kt_block = MSE(attn_out, proj_s)
+      - L_bridge_block = MSE(attn_out, teacher_ref_proj(t).detach())
 
-    This encourages the student's representation to become linearly
-    predictable from the teacher's representation via attention.
+    The target is a DETACHED projection of the teacher features, so the
+    student must learn Q projections that meaningfully attend to teacher K/V.
     """
 
     def __init__(
@@ -74,13 +75,13 @@ class InterAttentionLayer(nn.Module):
             nn.Dropout(proj_drop),
         )
 
-        # Student reference projection (for computing distance against attn output)
-        self.student_ref_proj = nn.Linear(feat_dim, proj_dim)
+        # Teacher reference projection (frozen target for the bridge loss)
+        self.teacher_ref_proj = nn.Linear(feat_dim, proj_dim)
 
         self._reset_parameters()
 
     def _reset_parameters(self):
-        for m in [self.proj_q, self.proj_k, self.proj_v, self.student_ref_proj]:
+        for m in [self.proj_q, self.proj_k, self.proj_v, self.teacher_ref_proj]:
             nn.init.xavier_uniform_(m.weight)
             nn.init.zeros_(m.bias)
         for m in self.out_proj:
@@ -105,7 +106,7 @@ class InterAttentionLayer(nn.Module):
         Returns
         -------
         loss : Tensor
-            Scalar MSE loss between attention-aligned representation and student ref.
+            Scalar MSE loss between attention-aligned representation and teacher ref.
         """
         B = teacher_feat.shape[0]
 
@@ -138,11 +139,11 @@ class InterAttentionLayer(nn.Module):
         attn_out, _ = self.mha(Q, K, V)  # (B, seq_len, proj_dim)
         attn_out = self.out_proj(attn_out)
 
-        # Student reference (what the student representation should align to)
-        s_ref = self.student_ref_proj(s_flat)  # (B, seq_len, proj_dim)
+        # Teacher reference (FIXED target — detached so no gradient flows back)
+        t_ref = self.teacher_ref_proj(t_flat).detach()  # (B, seq_len, proj_dim)
 
-        # L_kt for this block: L2 distance (Eq. 7)
-        loss = F.mse_loss(attn_out, s_ref)
+        # L_bridge for this block: MSE with frozen teacher target
+        loss = F.mse_loss(attn_out, t_ref)
         return loss
 
 
@@ -153,7 +154,7 @@ class InterAttentionBridge(nn.Module):
     and optionally one for the decoder.
 
     The total bridge loss is the mean of all per-block losses:
-        L_kt = mean(L_kt_enc_block_0, L_kt_enc_block_1, ..., L_kt_dec)
+        L_bridge = mean(L_bridge_enc_0, L_bridge_enc_1, ..., L_bridge_dec)
     """
 
     def __init__(
