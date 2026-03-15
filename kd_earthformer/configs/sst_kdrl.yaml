@@ -1,25 +1,29 @@
 # =============================================================================
-# KDRL: Earthformer-to-Earthformer Knowledge Distillation with Inter-Attention
+# KDRL: Earthformer-to-Earthformer Knowledge Distillation
 #
-# Joint Training Framework (Eq. 10):
-#   L_joint = α·L_hard + β·L_soft + γ·L_kt
+# Corrected Joint Loss:
+#   L = α·L_hard + β·L_feat + γ·L_bridge
+#
+# L_hard   = MSE(student_pred, ground_truth)
+# L_feat   = direct feature MSE (proven baseline — encoder memories + dec_pre_proj)
+# L_bridge = corrected inter-attention bridge (teacher-anchored target)
 # =============================================================================
 
 # --- Teacher (pre-trained, frozen) ---
-teacher_cfg_path: "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/sst.yaml"
-teacher_ckpt_path: "/kaggle/working/Earthformer-SST/scripts/cuboid_transformer/sst/experiments/sst_colab_run_1/checkpoints/last.ckpt"
+teacher_ckpt_path: "path/to/teacher/checkpoints/last.ckpt"
+teacher_cfg_path: "path/to/sst.yaml"
 
 # --- Patch Dataset (reuses existing SSTPatchDataModule) ---
 dataset:
   _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
-  data_root: "/kaggle/working/data"
+  data_root: "/path/to/data"
   filename: "sst.week.mean.nc"
   in_len: 12
   out_len: 12
-  batch_size: 2
-  num_workers: 4
+  batch_size: 4
+  num_workers: 2
   train_end_year: 2015
-  val_end_year: 2016
+  val_end_year: 2020
   # Teacher patch defaults: 15.625–20.625 lat, 65.625–72.375 lon
   patch_lat_deg: 5.0
   patch_lon_deg: 6.75
@@ -32,13 +36,13 @@ dataset:
 
 # --- KDRL Configuration ---
 kdrl:
-  # Loss weights (Eq. 10: L = α·L_hard + β·L_soft + γ·L_kt)
-  #   α (alpha_hard): ground truth accuracy — higher = more direct SST learning
-  #   β (beta_soft):  teacher mimicry — higher = more teacher "dark knowledge"
-  #   γ (gamma_kt):   representation alignment — higher = stronger feature matching
+  # Loss weights:
+  #   α (alpha_hard):   prediction vs ground truth
+  #   β (beta_feat):    direct feature MSE (proven baseline mechanism)
+  #   γ (gamma_bridge): corrected inter-attention bridge
   alpha_hard: 1.0
-  beta_soft: 0.5
-  gamma_kt: 0.5
+  beta_feat: 1.0
+  gamma_bridge: 0.3
 
   # Encoder blocks to bridge (indices into encoder memory list)
   enc_block_indices: [-2, -1]
@@ -55,7 +59,7 @@ kdrl:
 # --- Optimizer ---
 optim:
   total_batch_size: 32
-  micro_batch_size: 2
+  micro_batch_size: 4
   seed: 2022
   method: "adamw"
   lr: 0.08e-4
@@ -75,6 +79,6 @@ logging:
 # --- Trainer ---
 trainer:
   check_val_every_n_epoch: 1
-  precision: 16
+  precision: "16-mixed"
 
 seed: 2022
