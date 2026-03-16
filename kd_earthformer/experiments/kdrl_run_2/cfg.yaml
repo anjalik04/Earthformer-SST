@@ -1,0 +1,86 @@
+# @package _global_
+
+# --- Dataset Configuration ---
+dataset:
+  _target_: src.earthformer.datasets.sst.sst_patch_datamodule.SSTPatchDataModule
+  data_root: /kaggle/working/data
+  filename: sst.week.mean.nc
+  in_len: 12
+  out_len: 12
+  patch_lat_deg: 5.0
+  patch_lon_deg: 6.75
+  stride_lat_deg: 5.0
+  stride_lon_deg: 6.75
+  student_num_stride_patches: 10
+  student_stride_lat_fraction: 0.3
+  student_stride_south: true
+  batch_size: 4
+  num_workers: 2
+  train_start_year: 2001
+  train_end_year: 2015
+  val_end_year: 2016
+  use_cache: false
+
+# --- Model Configuration ---
+model:
+  _target_: src.earthformer.cuboid_transformer.CuboidTransformerModel
+  in_len: ${dataset.in_len}
+  out_len: ${dataset.out_len}
+  in_channels: 1
+  out_channels: 1
+  # spatial dimensions can be inferred or set explicitly
+  input_shape: [12, 720, 1440, 1]
+  target_shape: [12, 720, 1440, 1]
+
+  num_blocks: 1
+  num_layers: 6
+  num_global_vectors: 8
+  dim: 512
+  hidden_dim: 2048
+  num_heads: 8
+  encoder_depth: 3
+  decoder_depth: 3
+  downsample: 2
+  use_global_vector: True
+  use_autoregression: False
+
+  loss: "mae"
+  metrics: ["mse", "mae", "rmse"]
+
+# --- Optimizer and Scheduler Configuration ---
+optim:
+  total_batch_size: 32      # Added to match code expectations
+  micro_batch_size: 4       # Added to match code expectations
+  seed: 2022
+  method: "adamw"
+  lr: 1.0e-4
+  wd: 0.05
+  gradient_clip_val: 1.0
+  max_epochs: 50           # <-- CHANGE THIS (from 50 to 100)
+  lr_scheduler_mode: "cosine"
+  min_lr_ratio: 1.0e-3
+  warmup_min_lr_ratio: 0.0
+  warmup_percentage: 0.2
+  early_stop: true
+  early_stop_mode: "min"
+  early_stop_patience: 5
+  save_top_k: 1
+
+# --- Logging Configuration ---
+logging:
+  save_dir: "lightning_logs/sst"
+  project: "earthformer"
+  name: "cuboid_transformer_sst_singlefile"
+  monitor_lr: true
+  monitor_device: false
+
+# --- Trainer Configuration ---
+trainer:
+  gpus: 1
+  strategy: "ddp"
+  max_epochs: 50           # <-- CHANGE THIS (from 50 to 100)
+  precision: 16
+  check_val_every_n_epoch: 1
+  log_step_ratio: 0.01
+
+seed: 2022
