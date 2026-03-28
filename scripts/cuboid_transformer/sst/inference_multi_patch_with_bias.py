@@ -383,6 +383,8 @@ def main():
     for bias in bias_values:
         student = BiasCorrectedStudent(base_student, bias=bias).to(device).eval()
         bias_label = f"bias_{bias:.2f}"
+        bias_output_dir = os.path.join(args.output_dir, bias_label)
+        os.makedirs(bias_output_dir, exist_ok=True)
         print(f"\n{'='*60}")
         print(f"Running inference with bias correction: +{bias}°C")
         results = []
@@ -455,7 +457,7 @@ def main():
             ax2.grid(True, alpha=0.3)
 
             fig.tight_layout()
-            plot_path = os.path.join(args.output_dir, f"{patch_name}_prediction.png")
+            plot_path = os.path.join(bias_output_dir, f"{patch_name}_prediction.png")
             plt.savefig(plot_path, dpi=150)
             plt.close()
             print(f"  Plot saved: {plot_path}")
@@ -538,13 +540,13 @@ def main():
         ax.grid(True, alpha=0.3)
 
         fig.tight_layout()
-        summary_path = os.path.join(args.output_dir, "summary_comparison_{bias_label}.png")
+        summary_path = os.path.join(bias_output_dir, "summary_comparison_{bias_label}.png")
         plt.savefig(summary_path, dpi=150, bbox_inches='tight')
         plt.close()
         print(f"Summary plot saved: {summary_path}")
 
         # Save results to text file
-        results_txt = os.path.join(args.output_dir, "results_summary_{bias_label}.txt")
+        results_txt = os.path.join(bias_output_dir, "results_summary_{bias_label}.txt")
         with open(results_txt, "w") as f:
             f.write("Multi-Patch Inference Results\n")
             f.write("=" * 60 + "\n\n")
