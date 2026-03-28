@@ -1,0 +1,97 @@
+Multi-Patch Inference Results
+============================================================
+
+Training configuration:
+  Teacher patch: lat (15.625, 20.625), lon (65.625, 72.375)
+  Last training patch: lat (2.125, 7.125), lon (65.625, 72.375)
+  Patch size: 5.0° x 6.75°
+  Training patches: 10
+
+Accuracy definition: % of predictions within ±0.5°C of actual
+
+Results:
+------------------------------------------------------------
+
+Patch: south_0pct_overlap
+  Latitude:  0.625 to 5.625
+  Longitude: 65.625 to 72.375
+  MSE:       0.1231
+  RMSPE:     1.20%
+  Accuracy:  84.3%
+
+Patch: south_30pct_overlap
+  Latitude:  1.075 to 6.075
+  Longitude: 65.625 to 72.375
+  MSE:       0.1242
+  RMSPE:     1.20%
+  Accuracy:  84.3%
+
+Patch: south_60pct_overlap
+  Latitude:  1.525 to 6.525
+  Longitude: 65.625 to 72.375
+  MSE:       0.1289
+  RMSPE:     1.23%
+  Accuracy:  84.3%
+
+Patch: south_90pct_overlap
+  Latitude:  1.975 to 6.975
+  Longitude: 65.625 to 72.375
+  MSE:       0.1371
+  RMSPE:     1.27%
+  Accuracy:  83.5%
+
+Patch: south_100pct_overlap
+  Latitude:  2.125 to 7.125
+  Longitude: 65.625 to 72.375
+  MSE:       0.1410
+  RMSPE:     1.29%
+  Accuracy:  82.6%
+
+Patch: west_0pct_overlap
+  Latitude:  2.125 to 7.125
+  Longitude: 58.875 to 65.625
+  MSE:       0.2762
+  RMSPE:     1.83%
+  Accuracy:  64.5%
+
+Patch: west_30pct_overlap
+  Latitude:  2.125 to 7.125
+  Longitude: 60.900 to 67.650
+  MSE:       0.1629
+  RMSPE:     1.39%
+  Accuracy:  76.9%
+
+Patch: west_60pct_overlap
+  Latitude:  2.125 to 7.125
+  Longitude: 62.925 to 69.675
+  MSE:       0.1387
+  RMSPE:     1.28%
+  Accuracy:  80.2%
+
+Patch: west_90pct_overlap
+  Latitude:  2.125 to 7.125
+  Longitude: 64.950 to 71.700
+  MSE:       0.1378
+  RMSPE:     1.27%
+  Accuracy:  82.6%
+
+Patch: west_100pct_overlap
+  Latitude:  2.125 to 7.125
+  Longitude: 65.625 to 72.375
+  MSE:       0.1410
+  RMSPE:     1.29%
+  Accuracy:  82.6%
+
+Patch: random_near
+  Latitude:  0.370 to 5.370
+  Longitude: 77.005 to 83.755
+  MSE:       0.1530
+  RMSPE:     1.35%
+  Accuracy:  77.7%
+
+Patch: random_far
+  Latitude:  -25.320 to -20.320
+  Longitude: 100.940 to 112.690
+  MSE:       19.5602
+  RMSPE:     19.23%
+  Accuracy:  0.0%
