@@ -57,6 +57,16 @@ def compute_accuracy(actual: np.ndarray, pred: np.ndarray, threshold: float = AC
     correct = np.abs(actual - pred) <= threshold
     return float(correct.mean()) * 100.0
 
+def compute_rmspe(actual: np.ndarray, pred: np.ndarray) -> float:
+    """
+    RMSPE = sqrt( mean( ((actual - pred) / actual)^2 ) ) * 100
+    Skips timesteps where actual is near zero to avoid division instability.
+    """
+    mask = np.abs(actual) > 1e-6
+    if mask.sum() == 0:
+        return float('nan')
+    return float(np.sqrt(np.mean(((actual[mask] - pred[mask]) / actual[mask]) ** 2)) * 100)
+
 
 def _resize_patch(data: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     """Resize (T, H, W) to (T, target_h, target_w)."""
@@ -256,8 +266,9 @@ def run_inference_on_patch(
 
     mse = mean_squared_error(actual_deg, pred_deg)
     accuracy = compute_accuracy(actual_deg, pred_deg)
+    rmspe = compute_rmspe(actual_deg, pred_deg)
 
-    return pred_deg, actual_deg, times, mse, accuracy
+    return pred_deg, actual_deg, times, mse, accuracy, rmspe
 
 
 def get_parser():
@@ -372,7 +383,7 @@ def main():
         print(f"  Latitude:  {patch_lat[0]:.3f} to {patch_lat[1]:.3f}")
         print(f"  Longitude: {patch_lon[0]:.3f} to {patch_lon[1]:.3f}")
 
-        pred_deg, actual_deg, times, mse, accuracy = run_inference_on_patch(
+        pred_deg, actual_deg, times, mse, accuracy, rmspe = run_inference_on_patch(
             student=student,
             ds=ds,
             patch_lat=patch_lat,
@@ -390,6 +401,7 @@ def main():
             continue
 
         print(f"  MSE:      {mse:.4f}")
+        print(f"  RMSPE:    {rmspe:.2f}%")
         print(f"  Accuracy: {accuracy:.1f}% (within ±{ACCURACY_THRESHOLD_DEG}°C)")
         results.append({
             "name": patch_name,
@@ -524,6 +536,7 @@ def main():
                 f.write(f"  Latitude:  {r['lat'][0]:.3f} to {r['lat'][1]:.3f}\n")
                 f.write(f"  Longitude: {r['lon'][0]:.3f} to {r['lon'][1]:.3f}\n")
                 f.write(f"  MSE:       {r['mse']:.4f}\n")
+                f.write(f"  RMSPE:     {r['rmspe']:.2f}%\n")
                 f.write(f"  Accuracy:  {r['accuracy']:.1f}%\n")
         print(f"Results summary saved: {results_txt}")
 
