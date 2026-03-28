@@ -456,11 +456,12 @@ def main():
         print(f"\n{'='*60}")
         print("Creating summary comparison plot...")
 
-        fig, axes = plt.subplots(3, 1, figsize=(16, 14))
+        fig, axes = plt.subplots(4, 1, figsize=(16, 18))
 
         patch_names = [r["name"] for r in results]
         mses = [r["mse"] for r in results]
         accuracies = [r["accuracy"] for r in results]
+        rmspes = [r["rmspe"] for r in results]
 
         bar_colors = []
         for name in patch_names:
@@ -499,8 +500,20 @@ def main():
             ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
                     f'{val:.1f}%', ha='center', va='bottom', fontsize=8)
 
-        # Plot 3: Sample time series
+        # Plot 3: RMSPE
         ax = axes[2]
+        bars = ax.bar(x, rmspes, color=bar_colors, alpha=0.7, edgecolor="black")
+        ax.set_xticks(x)
+        ax.set_xticklabels(patch_names, rotation=45, ha="right")
+        ax.set_ylabel("RMSPE (%)")
+        ax.set_title("RMSPE Across Test Patches")
+        ax.grid(True, alpha=0.3, axis="y")
+        for bar, val in zip(bars, rmspes):
+            ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                    f'{val:.2f}%', ha='center', va='bottom', fontsize=8)
+
+        # Plot 4: Sample time series
+        ax = axes[3]
         n_samples = min(3, len(results))
         for i in range(n_samples):
             r = results[i]
