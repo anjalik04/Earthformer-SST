@@ -462,110 +462,111 @@ def main():
             plt.close()
             print(f"  Plot saved: {plot_path}")
 
+    
+        # Summary plot
+        if results:
+            print(f"\n{'='*60}")
+            print("Creating summary comparison plot...")
+    
+            fig, axes = plt.subplots(4, 1, figsize=(16, 18))
+    
+            patch_names = [r["name"] for r in results]
+            mses = [r["mse"] for r in results]
+            accuracies = [r["accuracy"] for r in results]
+            rmspes = [r["rmspe"] for r in results]
+    
+            bar_colors = []
+            for name in patch_names:
+                if "south" in name:
+                    bar_colors.append("steelblue")
+                elif "west" in name:
+                    bar_colors.append("coral")
+                else:
+                    bar_colors.append("forestgreen")
+    
+            x = range(len(patch_names))
+    
+            # Plot 1: MSE
+            ax = axes[0]
+            bars = ax.bar(x, mses, color=bar_colors, alpha=0.7, edgecolor="black")
+            ax.set_xticks(x)
+            ax.set_xticklabels(patch_names, rotation=45, ha="right")
+            ax.set_ylabel("MSE")
+            ax.set_title("MSE Across Test Patches")
+            ax.grid(True, alpha=0.3, axis="y")
+            for bar, val in zip(bars, mses):
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.3f}', ha='center', va='bottom', fontsize=8)
+    
+            # Plot 2: Accuracy %
+            ax = axes[1]
+            bars = ax.bar(x, accuracies, color=bar_colors, alpha=0.7, edgecolor="black")
+            ax.set_xticks(x)
+            ax.set_xticklabels(patch_names, rotation=45, ha="right")
+            ax.set_ylabel(f"Accuracy % (±{ACCURACY_THRESHOLD_DEG}°C)")
+            ax.set_title("Prediction Accuracy Across Test Patches")
+            ax.set_ylim(0, 110)
+            ax.axhline(100, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+            ax.grid(True, alpha=0.3, axis="y")
+            for bar, val in zip(bars, accuracies):
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.1f}%', ha='center', va='bottom', fontsize=8)
+    
+            # Plot 3: RMSPE
+            ax = axes[2]
+            bars = ax.bar(x, rmspes, color=bar_colors, alpha=0.7, edgecolor="black")
+            ax.set_xticks(x)
+            ax.set_xticklabels(patch_names, rotation=45, ha="right")
+            ax.set_ylabel("RMSPE (%)")
+            ax.set_title("RMSPE Across Test Patches")
+            ax.grid(True, alpha=0.3, axis="y")
+            for bar, val in zip(bars, rmspes):
+                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
+                        f'{val:.2f}%', ha='center', va='bottom', fontsize=8)
+    
+            # Plot 4: Sample time series
+            ax = axes[3]
+            n_samples = min(3, len(results))
+            for i in range(n_samples):
+                r = results[i]
+                t = r["times"][:50]
+                ax.plot(t, r["actual"][:50], label=f'{r["name"]} (actual)', linewidth=1.5, alpha=0.7)
+                ax.plot(t, r["pred"][:50], label=f'{r["name"]} (pred)', linestyle="--", linewidth=1.2, alpha=0.7)
+            ax.set_xlabel("Time")
+            ax.set_ylabel("SST (°C)")
+            ax.set_title("Sample Time Series (first 50 timesteps)")
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+            ax.grid(True, alpha=0.3)
+    
+            fig.tight_layout()
+            summary_path = os.path.join(bias_output_dir, "summary_comparison.png")
+            plt.savefig(summary_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            print(f"Summary plot saved: {summary_path}")
+    
+            # Save results to text file
+            results_txt = os.path.join(bias_output_dir, "results_summary.txt")
+            with open(results_txt, "w") as f:
+                f.write("Multi-Patch Inference Results\n")
+                f.write("=" * 60 + "\n\n")
+                f.write("Training configuration:\n")
+                f.write(f"  Teacher patch: lat {TEACHER_LAT}, lon {TEACHER_LON}\n")
+                f.write(f"  Last training patch: lat {LAST_PATCH_LAT}, lon {LAST_PATCH_LON}\n")
+                f.write(f"  Patch size: {PATCH_LAT_DEG}° x {PATCH_LON_DEG}°\n")
+                f.write(f"  Training patches: {NUM_STRIDE_PATCHES}\n\n")
+                f.write(f"Accuracy definition: % of predictions within ±{ACCURACY_THRESHOLD_DEG}°C of actual\n\n")
+                f.write("Results:\n")
+                f.write("-" * 60 + "\n")
+                for r in results:
+                    f.write(f"\nPatch: {r['name']}\n")
+                    f.write(f"  Latitude:  {r['lat'][0]:.3f} to {r['lat'][1]:.3f}\n")
+                    f.write(f"  Longitude: {r['lon'][0]:.3f} to {r['lon'][1]:.3f}\n")
+                    f.write(f"  MSE:       {r['mse']:.4f}\n")
+                    f.write(f"  RMSPE:     {r['rmspe']:.2f}%\n")
+                    f.write(f"  Accuracy:  {r['accuracy']:.1f}%\n")
+            print(f"Results summary saved: {results_txt}")
+            
     ds.close()
-
-    # Summary plot
-    if results:
-        print(f"\n{'='*60}")
-        print("Creating summary comparison plot...")
-
-        fig, axes = plt.subplots(4, 1, figsize=(16, 18))
-
-        patch_names = [r["name"] for r in results]
-        mses = [r["mse"] for r in results]
-        accuracies = [r["accuracy"] for r in results]
-        rmspes = [r["rmspe"] for r in results]
-
-        bar_colors = []
-        for name in patch_names:
-            if "south" in name:
-                bar_colors.append("steelblue")
-            elif "west" in name:
-                bar_colors.append("coral")
-            else:
-                bar_colors.append("forestgreen")
-
-        x = range(len(patch_names))
-
-        # Plot 1: MSE
-        ax = axes[0]
-        bars = ax.bar(x, mses, color=bar_colors, alpha=0.7, edgecolor="black")
-        ax.set_xticks(x)
-        ax.set_xticklabels(patch_names, rotation=45, ha="right")
-        ax.set_ylabel("MSE")
-        ax.set_title("MSE Across Test Patches")
-        ax.grid(True, alpha=0.3, axis="y")
-        for bar, val in zip(bars, mses):
-            ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                    f'{val:.3f}', ha='center', va='bottom', fontsize=8)
-
-        # Plot 2: Accuracy %
-        ax = axes[1]
-        bars = ax.bar(x, accuracies, color=bar_colors, alpha=0.7, edgecolor="black")
-        ax.set_xticks(x)
-        ax.set_xticklabels(patch_names, rotation=45, ha="right")
-        ax.set_ylabel(f"Accuracy % (±{ACCURACY_THRESHOLD_DEG}°C)")
-        ax.set_title("Prediction Accuracy Across Test Patches")
-        ax.set_ylim(0, 110)
-        ax.axhline(100, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
-        ax.grid(True, alpha=0.3, axis="y")
-        for bar, val in zip(bars, accuracies):
-            ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                    f'{val:.1f}%', ha='center', va='bottom', fontsize=8)
-
-        # Plot 3: RMSPE
-        ax = axes[2]
-        bars = ax.bar(x, rmspes, color=bar_colors, alpha=0.7, edgecolor="black")
-        ax.set_xticks(x)
-        ax.set_xticklabels(patch_names, rotation=45, ha="right")
-        ax.set_ylabel("RMSPE (%)")
-        ax.set_title("RMSPE Across Test Patches")
-        ax.grid(True, alpha=0.3, axis="y")
-        for bar, val in zip(bars, rmspes):
-            ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                    f'{val:.2f}%', ha='center', va='bottom', fontsize=8)
-
-        # Plot 4: Sample time series
-        ax = axes[3]
-        n_samples = min(3, len(results))
-        for i in range(n_samples):
-            r = results[i]
-            t = r["times"][:50]
-            ax.plot(t, r["actual"][:50], label=f'{r["name"]} (actual)', linewidth=1.5, alpha=0.7)
-            ax.plot(t, r["pred"][:50], label=f'{r["name"]} (pred)', linestyle="--", linewidth=1.2, alpha=0.7)
-        ax.set_xlabel("Time")
-        ax.set_ylabel("SST (°C)")
-        ax.set_title("Sample Time Series (first 50 timesteps)")
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
-        ax.grid(True, alpha=0.3)
-
-        fig.tight_layout()
-        summary_path = os.path.join(bias_output_dir, "summary_comparison_{bias_label}.png")
-        plt.savefig(summary_path, dpi=150, bbox_inches='tight')
-        plt.close()
-        print(f"Summary plot saved: {summary_path}")
-
-        # Save results to text file
-        results_txt = os.path.join(bias_output_dir, "results_summary_{bias_label}.txt")
-        with open(results_txt, "w") as f:
-            f.write("Multi-Patch Inference Results\n")
-            f.write("=" * 60 + "\n\n")
-            f.write("Training configuration:\n")
-            f.write(f"  Teacher patch: lat {TEACHER_LAT}, lon {TEACHER_LON}\n")
-            f.write(f"  Last training patch: lat {LAST_PATCH_LAT}, lon {LAST_PATCH_LON}\n")
-            f.write(f"  Patch size: {PATCH_LAT_DEG}° x {PATCH_LON_DEG}°\n")
-            f.write(f"  Training patches: {NUM_STRIDE_PATCHES}\n\n")
-            f.write(f"Accuracy definition: % of predictions within ±{ACCURACY_THRESHOLD_DEG}°C of actual\n\n")
-            f.write("Results:\n")
-            f.write("-" * 60 + "\n")
-            for r in results:
-                f.write(f"\nPatch: {r['name']}\n")
-                f.write(f"  Latitude:  {r['lat'][0]:.3f} to {r['lat'][1]:.3f}\n")
-                f.write(f"  Longitude: {r['lon'][0]:.3f} to {r['lon'][1]:.3f}\n")
-                f.write(f"  MSE:       {r['mse']:.4f}\n")
-                f.write(f"  RMSPE:     {r['rmspe']:.2f}%\n")
-                f.write(f"  Accuracy:  {r['accuracy']:.1f}%\n")
-        print(f"Results summary saved: {results_txt}")
 
     print(f"\n{'='*60}")
     print(f"All done! Results saved to {args.output_dir}/")
