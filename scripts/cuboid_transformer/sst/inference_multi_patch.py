@@ -426,7 +426,7 @@ def main():
             f"{patch_name}\n"
             f"Lat {patch_lat[0]:.2f}–{patch_lat[1]:.2f}°, "
             f"Lon {patch_lon[0]:.2f}–{patch_lon[1]:.2f}° | "
-            f"MSE = {mse:.4f} | Accuracy = {accuracy:.1f}%"
+            f"MSE = {mse:.4f} | RMSPE = {rmspe:.2f}% | Accuracy = {accuracy:.1f}%"
         )
         ax.set_ylabel("SST (°C)")
         ax.legend()
