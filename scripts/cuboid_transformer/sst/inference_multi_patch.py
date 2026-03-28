@@ -408,6 +408,7 @@ def main():
             "lat": patch_lat,
             "lon": patch_lon,
             "mse": mse,
+            "rmspe": rmspe,
             "accuracy": accuracy,
             "pred": pred_deg,
             "actual": actual_deg,
