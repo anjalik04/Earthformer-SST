@@ -16,70 +16,82 @@ Patch: south_0pct_overlap
   Latitude:  0.625 to 5.625
   Longitude: 65.625 to 72.375
   MSE:       0.2152
+  RMSPE:     1.56%
   Accuracy:  72.3%
 
 Patch: south_30pct_overlap
   Latitude:  1.075 to 6.075
   Longitude: 65.625 to 72.375
   MSE:       0.2108
+  RMSPE:     1.54%
   Accuracy:  72.7%
 
 Patch: south_60pct_overlap
   Latitude:  1.525 to 6.525
   Longitude: 65.625 to 72.375
   MSE:       0.1994
+  RMSPE:     1.50%
   Accuracy:  71.1%
 
 Patch: south_90pct_overlap
   Latitude:  1.975 to 6.975
   Longitude: 65.625 to 72.375
   MSE:       0.1956
+  RMSPE:     1.49%
   Accuracy:  70.7%
 
 Patch: south_100pct_overlap
   Latitude:  2.125 to 7.125
   Longitude: 65.625 to 72.375
   MSE:       0.1920
+  RMSPE:     1.48%
   Accuracy:  71.5%
 
 Patch: west_0pct_overlap
   Latitude:  2.125 to 7.125
   Longitude: 58.875 to 65.625
   MSE:       0.3034
+  RMSPE:     1.89%
   Accuracy:  62.8%
 
 Patch: west_30pct_overlap
   Latitude:  2.125 to 7.125
   Longitude: 60.900 to 67.650
   MSE:       0.2463
+  RMSPE:     1.69%
   Accuracy:  72.7%
 
 Patch: west_60pct_overlap
   Latitude:  2.125 to 7.125
   Longitude: 62.925 to 69.675
   MSE:       0.2198
+  RMSPE:     1.59%
   Accuracy:  71.1%
 
 Patch: west_90pct_overlap
   Latitude:  2.125 to 7.125
   Longitude: 64.950 to 71.700
   MSE:       0.1923
+  RMSPE:     1.48%
   Accuracy:  72.3%
 
 Patch: west_100pct_overlap
   Latitude:  2.125 to 7.125
   Longitude: 65.625 to 72.375
   MSE:       0.1920
+  RMSPE:     1.48%
   Accuracy:  71.5%
 
 Patch: random_near
   Latitude:  0.370 to 5.370
   Longitude: 77.005 to 83.755
   MSE:       0.2369
+  RMSPE:     1.65%
   Accuracy:  71.1%
 
 Patch: random_far
   Latitude:  -25.320 to -20.320
   Longitude: 100.940 to 112.690
   MSE:       16.3872
+  RMSPE:     17.53%
   Accuracy:  0.0%
