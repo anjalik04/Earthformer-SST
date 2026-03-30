@@ -167,22 +167,67 @@ def compute_westward_patches() -> List[Tuple[str, Tuple[float, float], Tuple[flo
 
 
 def compute_random_patches(ds: xr.Dataset = None, seed: int = 42) -> List[Tuple[str, Tuple[float, float], Tuple[float, float]]]:
-    """
-    Returns the two fixed test patches with explicit bounds.
-    1. Random Near: Centered at 10.87, 70.38 (Lat: 8.37 to 13.37, Lon: 67.005 to 73.755)
-       — close to the training region to test near-distribution generalisation.
-    2. Random Far: Fixed bounds Lat: -25.32 to -20.32, Lon: 110.94 to 117.69
-       — Australian/Indian Ocean region to test out-of-distribution generalisation.
-    """
     patches = []
+    
+    # 1. South Sri Lanka
     p1_lat = (0.37, 5.37)
     p1_lon = (77.005, 83.755)
-    patches.append(("random_near", p1_lat, p1_lon))
-    p2_lat = (-25.32, -20.32)
-    p2_lon = (100.94, 112.69)
-    patches.append(("random_far", p2_lat, p2_lon))
-    print(f"  [Random Patches] 'near' bounds: Lat {p1_lat}, Lon {p1_lon}")
-    print(f"  [Random Patches] 'far'  bounds: Lat {p2_lat}, Lon {p2_lon}")
+    patches.append(("South_Srilanka", p1_lat, p1_lon))
+    print(f"  [Geographic Patch] 'South_Srilanka' bounds: Lat {p1_lat}, Lon {p1_lon}")
+    
+    # 2. West Australia
+    p2_lat = (-25.0, -20.0)
+    p2_lon = (105.94, 112.69)
+    patches.append(("West_Australia", p2_lat, p2_lon))
+    print(f"  [Geographic Patch] 'West_Australia' bounds: Lat {p2_lat}, Lon {p2_lon}")
+    
+    # 3. Arabian Sea
+    p3_lat = (10.0, 15.0)
+    p3_lon = (55.0, 61.75)
+    patches.append(("Arabian_Sea", p3_lat, p3_lon))
+    print(f"  [Geographic Patch] 'Arabian_Sea' bounds: Lat {p3_lat}, Lon {p3_lon}")
+    
+    # 4. Bay of Bengal
+    p4_lat = (10.0, 15.0)
+    p4_lon = (85.0, 91.75)
+    patches.append(("Bay_Of_Bengal", p4_lat, p4_lon))
+    print(f"  [Geographic Patch] 'Bay_Of_Bengal' bounds: Lat {p4_lat}, Lon {p4_lon}")
+    
+    # 5. Equatorial Indian Ocean
+    p5_lat = (-10.0, -5.0)
+    p5_lon = (65.625, 72.375)
+    patches.append(("Equatorial_Indian_Ocean", p5_lat, p5_lon))
+    print(f"  [Geographic Patch] 'Equatorial_Indian_Ocean' bounds: Lat {p5_lat}, Lon {p5_lon}")
+    
+    # 6. Southwest Indian Ocean
+    p6_lat = (-10.0, -5.0)
+    p6_lon = (41.0, 47.75)
+    patches.append(("Southwest_Indian_Ocean", p6_lat, p6_lon))
+    print(f"  [Geographic Patch] 'Southwest_Indian_Ocean' bounds: Lat {p6_lat}, Lon {p6_lon}")
+    
+    # 7. South Central Indian
+    p7_lat = (-25.0, -20.0)
+    p7_lon = (55.0, 61.75)
+    patches.append(("South_Central_Indian", p7_lat, p7_lon))
+    print(f"  [Geographic Patch] 'South_Central_Indian' bounds: Lat {p7_lat}, Lon {p7_lon}")
+    
+    # 8. Central Indian Ocean
+    p8_lat = (-25.0, -20.0)
+    p8_lon = (77.005, 83.755)
+    patches.append(("Central_Indian_Ocean", p8_lat, p8_lon))
+    print(f"  [Geographic Patch] 'Central_Indian_Ocean' bounds: Lat {p8_lat}, Lon {p8_lon}")
+    
+    # 9. Eastern Indian Ocean
+    p9_lat = (-10.0, -5.0)
+    p9_lon = (95.0, 101.75)
+    patches.append(("Eastern_Indian_Ocean", p9_lat, p9_lon))
+    print(f"  [Geographic Patch] 'Eastern_Indian_Ocean' bounds: Lat {p9_lat}, Lon {p9_lon}")
+    
+    # 10. West Pacific Equatorial
+    p10_lat = (10.0, 15.0)
+    p10_lon = (130.0, 136.75)
+    patches.append(("West_Pacific_Equatorial", p10_lat, p10_lon))
+    print(f"  [Geographic Patch] 'West_Pacific_Equatorial' bounds: Lat {p10_lat}, Lon {p10_lon}")
     return patches
 
 
