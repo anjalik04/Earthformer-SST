@@ -82,16 +82,72 @@ Patch: west_100pct_overlap
   RMSPE:     1.48%
   Accuracy:  71.5%
 
-Patch: random_near
+Patch: South_Srilanka
   Latitude:  0.370 to 5.370
   Longitude: 77.005 to 83.755
   MSE:       0.2369
   RMSPE:     1.65%
   Accuracy:  71.1%
 
-Patch: random_far
-  Latitude:  -25.320 to -20.320
-  Longitude: 100.940 to 112.690
-  MSE:       16.3872
-  RMSPE:     17.53%
+Patch: West_Australia
+  Latitude:  -25.000 to -20.000
+  Longitude: 105.940 to 112.690
+  MSE:       13.3728
+  RMSPE:     15.62%
   Accuracy:  0.0%
+
+Patch: Arabian_Sea
+  Latitude:  10.000 to 15.000
+  Longitude: 55.000 to 61.750
+  MSE:       1.4224
+  RMSPE:     4.47%
+  Accuracy:  21.1%
+
+Patch: Bay_Of_Bengal
+  Latitude:  10.000 to 15.000
+  Longitude: 85.000 to 91.750
+  MSE:       0.4610
+  RMSPE:     2.25%
+  Accuracy:  60.7%
+
+Patch: Equatorial_Indian_Ocean
+  Latitude:  -10.000 to -5.000
+  Longitude: 65.625 to 72.375
+  MSE:       0.4810
+  RMSPE:     2.47%
+  Accuracy:  48.8%
+
+Patch: Southwest_Indian_Ocean
+  Latitude:  -10.000 to -5.000
+  Longitude: 41.000 to 47.750
+  MSE:       0.9689
+  RMSPE:     3.73%
+  Accuracy:  31.4%
+
+Patch: South_Central_Indian
+  Latitude:  -25.000 to -20.000
+  Longitude: 55.000 to 61.750
+  MSE:       7.9789
+  RMSPE:     11.87%
+  Accuracy:  3.3%
+
+Patch: Central_Indian_Ocean
+  Latitude:  -25.000 to -20.000
+  Longitude: 77.005 to 83.755
+  MSE:       14.4950
+  RMSPE:     16.63%
+  Accuracy:  0.0%
+
+Patch: Eastern_Indian_Ocean
+  Latitude:  -10.000 to -5.000
+  Longitude: 95.000 to 101.750
+  MSE:       0.3046
+  RMSPE:     1.93%
+  Accuracy:  64.9%
+
+Patch: West_Pacific_Equatorial
+  Latitude:  10.000 to 15.000
+  Longitude: 130.000 to 136.750
+  MSE:       0.1506
+  RMSPE:     1.31%
+  Accuracy:  79.8%
