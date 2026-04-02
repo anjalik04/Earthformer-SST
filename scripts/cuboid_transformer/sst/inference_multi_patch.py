@@ -456,19 +456,6 @@ def main():
     )
     student = pl_module.student.to(device).eval()
 
-    print("\nVerifying timestep alignment...")
-    verify_timestep_alignment(
-        student=student,  # use base_student (bias_0.00) for clean check
-        ds=ds,
-        patch_lat=(0.625, 5.625),
-        patch_lon=(65.625, 72.375),
-        mean=mean,
-        std=std,
-        in_len=in_len,
-        out_len=out_len,
-        device=device,
-    )
-
     print("Loading SST dataset...")
     ds = xr.open_dataset(file_path)
     train_slice = slice(None, str(train_end_year))
@@ -480,6 +467,19 @@ def main():
         std = 1.0
     print(f"Normalization: mean={mean:.4f}, std={std:.4f}")
     print(f"Accuracy threshold: ±{ACCURACY_THRESHOLD_DEG}°C")
+
+        print("\nVerifying timestep alignment...")
+    verify_timestep_alignment(
+        student=student,  # use base_student (bias_0.00) for clean check
+        ds=ds,
+        patch_lat=(0.625, 5.625),
+        patch_lon=(65.625, 72.375),
+        mean=mean,
+        std=std,
+        in_len=in_len,
+        out_len=out_len,
+        device=device,
+    )
 
     all_patches = []
     if args.test_scenarios in ["all", "south"]:
