@@ -363,6 +363,65 @@ def get_parser():
     )
     return p
 
+def verify_timestep_alignment(student, ds, patch_lat, patch_lon, mean, std, 
+                               in_len, out_len, device, target_h=21, target_w=28):
+    """
+    Verifies model predicts correct timestep by checking if:
+    1. Prediction at t+12 matches actual at t+12 better than actual at t+11 (one step back)
+    2. Prints correlation of pred vs actual[t+12] and pred vs actual[t+11]
+    """
+    ds_patch = ds.sel(lat=slice(*patch_lat), lon=slice(*patch_lon))
+    test_slice = slice("2021", None)
+    patch_raw = ds_patch["sst"].sel(time=test_slice).values.astype(np.float32)
+    time_index = ds_patch["sst"].sel(time=test_slice).get_index("time")
+    patch_norm = (patch_raw - mean) / std
+    if patch_norm.shape[1] != target_h or patch_norm.shape[2] != target_w:
+        patch_norm = _resize_patch(patch_norm, target_h, target_w)
+    patch_norm = patch_norm[:, np.newaxis, :, :]
+
+    # Run inference on first 5 sequences only
+    preds = []
+    actuals_correct = []   # actual at t+12 (correct timestep)
+    actuals_offby1 = []    # actual at t+11 (one step back)
+
+    with torch.no_grad():
+        for i in range(5):
+            chunk = patch_norm[i : i + in_len + out_len]
+            x = torch.from_numpy(chunk[:in_len]).float().unsqueeze(0).to(device)
+            x = x.permute(0, 1, 3, 4, 2)
+            pred = student(x).cpu().numpy().squeeze(0).squeeze(-1)
+
+            # First predicted frame (index in_len)
+            pred_first = pred[0].mean()
+            actual_correct = patch_norm[i + in_len, 0].mean()      # t+12
+            actual_offby1  = patch_norm[i + in_len - 1, 0].mean()  # t+11
+
+            preds.append(pred_first)
+            actuals_correct.append(actual_correct)
+            actuals_offby1.append(actual_offby1)
+
+            print(f"\nSequence {i}:")
+            print(f"  Input ends at:          {time_index[i + in_len - 1]}")
+            print(f"  Pred should match:      {time_index[i + in_len]}   (t+12, correct)")
+            print(f"  Off-by-1 would match:   {time_index[i + in_len - 1]} (t+11, wrong)")
+            print(f"  Pred value:             {pred_first * std + mean:.4f}°C")
+            print(f"  Actual at t+12:         {actual_correct * std + mean:.4f}°C  | diff: {abs(pred_first - actual_correct):.4f}")
+            print(f"  Actual at t+11:         {actual_offby1  * std + mean:.4f}°C  | diff: {abs(pred_first - actual_offby1):.4f}")
+
+    preds = np.array(preds)
+    actuals_correct = np.array(actuals_correct)
+    actuals_offby1  = np.array(actuals_offby1)
+
+    mse_correct = np.mean((preds - actuals_correct) ** 2)
+    mse_offby1  = np.mean((preds - actuals_offby1)  ** 2)
+
+    print(f"\n{'='*50}")
+    print(f"MSE vs correct timestep (t+12): {mse_correct:.6f}")
+    print(f"MSE vs off-by-1   (t+11):       {mse_offby1:.6f}")
+    if mse_correct < mse_offby1:
+        print("✓ Model is predicting the CORRECT timestep (t+12)")
+    else:
+        print("✗ WARNING: Model appears to be predicting t+11 (one step back)")
 
 def main():
     args = get_parser().parse_args()
@@ -396,6 +455,19 @@ def main():
         strict=False
     )
     student = pl_module.student.to(device).eval()
+
+    print("\nVerifying timestep alignment...")
+    verify_timestep_alignment(
+        student=student,  # use base_student (bias_0.00) for clean check
+        ds=ds,
+        patch_lat=(0.625, 5.625),
+        patch_lon=(65.625, 72.375),
+        mean=mean,
+        std=std,
+        in_len=in_len,
+        out_len=out_len,
+        device=device,
+    )
 
     print("Loading SST dataset...")
     ds = xr.open_dataset(file_path)
