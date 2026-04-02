@@ -468,7 +468,7 @@ def main():
     print(f"Normalization: mean={mean:.4f}, std={std:.4f}")
     print(f"Accuracy threshold: ±{ACCURACY_THRESHOLD_DEG}°C")
 
-        print("\nVerifying timestep alignment...")
+    print("\nVerifying timestep alignment...")
     verify_timestep_alignment(
         student=student,  # use base_student (bias_0.00) for clean check
         ds=ds,
